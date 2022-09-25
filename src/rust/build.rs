@@ -7,6 +7,7 @@ fn main() {
 
     cbindgen::Builder::new()
         .with_crate(crate_dir)
+        .with_pragma_once(true)
         .generate()
         .expect("Unable to generate bindings")
         .write_to_file("bindings.h");

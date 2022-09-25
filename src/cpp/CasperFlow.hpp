@@ -8,3 +8,4 @@
 #include "../rust/bindings.h"
 // Others
 #include "lowlevel_gui.hpp"
+#include "node_style.hpp"

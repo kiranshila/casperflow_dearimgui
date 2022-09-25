@@ -6,6 +6,9 @@ void cf_editor(ed::EditorContext *ctx, bool *p_open) {
   ImGui::Begin("Editor", p_open);
   ed::SetCurrentEditor(ctx);
   ax::NodeEditor::Begin("Editor");
+
+  draw_primitive_node();
+
   ax::NodeEditor::End();
   ed::SetCurrentEditor(nullptr);
   ImGui::End();
@@ -188,6 +191,7 @@ int main() {
       ImGui::DockBuilderFinish(ds_id);
     }
 
+    // Run the layout
     if (ws.show_editor)
       cf_editor(ed_ctx, &ws.show_editor);
     if (ws.show_browser)
