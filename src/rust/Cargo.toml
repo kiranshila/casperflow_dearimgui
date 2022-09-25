@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+generational-arena = "0.2.8"
 
 [build-dependencies]
 cbindgen = "0.24"

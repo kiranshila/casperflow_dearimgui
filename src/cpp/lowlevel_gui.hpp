@@ -5,6 +5,7 @@
 #include "bindings/imgui_impl_glfw.h"
 #include "bindings/imgui_impl_opengl3.h"
 #include <GLFW/glfw3.h>
+#include <imnodes.h>
 
 // Setup the GL context and startup ImGui, returning the window
 GLFWwindow *gui_init();

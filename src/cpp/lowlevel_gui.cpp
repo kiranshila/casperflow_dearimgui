@@ -26,9 +26,10 @@ GLFWwindow *gui_init() {
   glfwMakeContextCurrent(window);
   glfwSwapInterval(1);
 
-  // Initialize imgui
+  // Initialize imgui and imnodes
   IMGUI_CHECKVERSION();
   ImGui::CreateContext();
+  ImNodes::CreateContext();
   ImGuiIO &io = ImGui::GetIO();
   io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;
 
@@ -71,6 +72,7 @@ void gui_render(GLFWwindow *window) {
 void gui_cleanup(GLFWwindow *window) {
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
+  ImNodes::DestroyContext();
   ImGui::DestroyContext();
   glfwDestroyWindow(window);
   glfwTerminate();

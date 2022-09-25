@@ -1,16 +1,65 @@
 #include "CasperFlow.hpp"
+#include "imnodes.h"
 
-namespace ed = ax::NodeEditor;
+void in_port(int node_id, int pin_id) {
+  ImNodes::BeginNode(node_id);
+  ImNodes::BeginOutputAttribute(pin_id);
+  ImGui::Text("In");
+  ImNodes::EndOutputAttribute();
+  ImNodes::EndNode();
+}
 
-void cf_editor(ed::EditorContext *ctx, bool *p_open) {
+void out_port(int node_id, int pin_id) {
+  ImNodes::BeginNode(node_id);
+  ImNodes::BeginInputAttribute(pin_id);
+  ImGui::Text("Out");
+  ImNodes::EndInputAttribute();
+  ImNodes::EndNode();
+}
+
+void logical(int node_id, int in_a_id, int in_b_id, int out_id) {
+  ImNodes::BeginNode(node_id);
+
+  ImNodes::BeginNodeTitleBar();
+  ImGui::TextUnformatted("Logical");
+  ImNodes::EndNodeTitleBar();
+
+  ImNodes::BeginInputAttribute(in_a_id);
+  ImGui::Text("A");
+  ImNodes::EndInputAttribute();
+
+  ImNodes::BeginInputAttribute(in_b_id);
+  ImGui::Text("B");
+  ImNodes::EndInputAttribute();
+
+  ImNodes::BeginOutputAttribute(out_id);
+  ImGui::Text("Out");
+  ImNodes::EndOutputAttribute();
+
+  ImNodes::EndNode();
+}
+
+void cf_editor(bool *p_open) {
   ImGui::Begin("Editor", p_open);
-  ed::SetCurrentEditor(ctx);
-  ax::NodeEditor::Begin("Editor");
+  ImNodes::BeginNodeEditor();
 
-  draw_primitive_node();
+  in_port(1, 2);
+  in_port(3, 4);
+  in_port(5, 6);
 
-  ax::NodeEditor::End();
-  ed::SetCurrentEditor(nullptr);
+  logical(7, 8, 9, 10);
+  logical(11, 12, 13, 14);
+
+  out_port(15, 16);
+
+  ImNodes::Link(17, 2, 8);
+  ImNodes::Link(18, 4, 9);
+  ImNodes::Link(19, 6, 12);
+  ImNodes::Link(20, 10, 13);
+  ImNodes::Link(21, 14, 16);
+
+  ImNodes::MiniMap(0.1f, ImNodesMiniMapLocation_BottomRight);
+  ImNodes::EndNodeEditor();
   ImGui::End();
 }
 
@@ -160,11 +209,9 @@ int main() {
 
   // Setup some GUI state
   bool first_frame = true;
-  ed::EditorContext *ed_ctx = ed::CreateEditor(nullptr);
+
   ApplicationLog log;
   WindowState ws;
-
-  log.add_log("%s", hello_from_rust());
 
   // Run the gui!
   while (!glfwWindowShouldClose(window)) {
@@ -193,7 +240,7 @@ int main() {
 
     // Run the layout
     if (ws.show_editor)
-      cf_editor(ed_ctx, &ws.show_editor);
+      cf_editor(&ws.show_editor);
     if (ws.show_browser)
       cf_library(&ws.show_browser);
     if (ws.show_log)
@@ -207,7 +254,6 @@ int main() {
 
   // Cleanup everything
   gui_cleanup(window);
-  ed::DestroyEditor(ed_ctx);
 
   // All done!
   return 0;
