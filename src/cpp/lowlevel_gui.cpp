@@ -1,6 +1,6 @@
 #include "lowlevel_gui.hpp"
 
-GLFWwindow *init() {
+GLFWwindow *gui_init() {
   // Setup window
   if (!glfwInit()) {
     return nullptr;
@@ -45,7 +45,7 @@ GLFWwindow *init() {
   return window;
 }
 
-void newframe() {
+void gui_newframe() {
   // Update the state of events that have happened to the window
   glfwPollEvents();
 
@@ -55,7 +55,7 @@ void newframe() {
   ImGui::NewFrame();
 }
 
-void render(GLFWwindow *window) {
+void gui_render(GLFWwindow *window) {
   ImGui::Render();
   int display_w, display_h;
   glfwGetFramebufferSize(window, &display_w, &display_h);
@@ -68,7 +68,7 @@ void render(GLFWwindow *window) {
   glfwSwapBuffers(window);
 }
 
-void cleanup(GLFWwindow *window) {
+void gui_cleanup(GLFWwindow *window) {
   ImGui_ImplOpenGL3_Shutdown();
   ImGui_ImplGlfw_Shutdown();
   ImGui::DestroyContext();

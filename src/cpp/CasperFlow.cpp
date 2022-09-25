@@ -1,6 +1,4 @@
 #include "CasperFlow.hpp"
-#include "imgui.h"
-#include "imgui_node_editor.h"
 
 namespace ed = ax::NodeEditor;
 
@@ -121,10 +119,12 @@ struct WindowState {
   bool show_editor;
   bool show_log;
   bool show_browser;
+  bool show_demo;
   WindowState() {
     show_editor = true;
     show_log = true;
     show_browser = true;
+    show_demo = false;
   }
 };
 
@@ -144,6 +144,7 @@ static void cf_main_menu(WindowState *ws) {
       ImGui::Checkbox("Editor", &ws->show_editor);
       ImGui::Checkbox("Log", &ws->show_log);
       ImGui::Checkbox("Library Browser", &ws->show_browser);
+      ImGui::Checkbox("ImGui Demo", &ws->show_demo);
       ImGui::EndMenu();
     }
     ImGui::EndMainMenuBar();
@@ -152,7 +153,7 @@ static void cf_main_menu(WindowState *ws) {
 
 int main() {
 
-  GLFWwindow *window = init();
+  GLFWwindow *window = gui_init();
 
   // Setup some GUI state
   bool first_frame = true;
@@ -165,7 +166,7 @@ int main() {
   // Run the gui!
   while (!glfwWindowShouldClose(window)) {
     // Get the next frame to render to
-    newframe();
+    gui_newframe();
 
     // Display the main menu
     cf_main_menu(&ws);
@@ -193,15 +194,15 @@ int main() {
       cf_library(&ws.show_browser);
     if (ws.show_log)
       log.draw("Log", &ws.show_log);
-
-    // ImGui::ShowDemoWindow();
+    if (ws.show_demo)
+      ImGui::ShowDemoWindow(&ws.show_demo);
 
     // Render
-    render(window);
+    gui_render(window);
   }
 
   // Cleanup everything
-  cleanup(window);
+  gui_cleanup(window);
   ed::DestroyEditor(ed_ctx);
 
   // All done!
