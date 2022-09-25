@@ -6,6 +6,6 @@
 
 extern "C" {
 
-void hello_from_rust();
+const char *hello_from_rust();
 
 } // extern "C"
