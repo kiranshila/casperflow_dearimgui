@@ -5,6 +5,7 @@ edition = "2021"
 
 [dependencies]
 generational-arena = "0.2.8"
+lazy_static = "1.4.0"
 
 [build-dependencies]
 cbindgen = "0.24"
