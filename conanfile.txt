@@ -6,8 +6,8 @@ glfw/3.3.8
 cmake
 
 [imports]
-./res/bindings, imgui_impl_glfw.h -> ../src/cpp/bindings
-./res/bindings, imgui_impl_glfw.cpp -> ../src/cpp/bindings
-./res/bindings, imgui_impl_opengl3.h -> ../src/cpp/bindings
-./res/bindings, imgui_impl_opengl3.cpp -> ../src/cpp/bindings
-./res/bindings, imgui_impl_opengl3_loader.h -> ../src/cpp/bindings
+./res/bindings, imgui_impl_glfw.h -> ../src/bindings
+./res/bindings, imgui_impl_glfw.cpp -> ../src/bindings
+./res/bindings, imgui_impl_opengl3.h -> ../src/bindings
+./res/bindings, imgui_impl_opengl3.cpp -> ../src/bindings
+./res/bindings, imgui_impl_opengl3_loader.h -> ../src/bindings

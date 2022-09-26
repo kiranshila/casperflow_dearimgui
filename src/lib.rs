@@ -1,11 +1,12 @@
 //! This module contians the functions that we'll extern out to C, to be interacted with from the GUI code
-use std::{
-    ffi::{c_char, CStr},
-    sync::Mutex,
-};
+pub mod verilog;
 
-use crate::verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind, WireIndex};
+use crate::{
+    ffi::{SizedVerilogKind, UnsizedVerilogKind},
+    verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind, WireIndex},
+};
 use lazy_static::lazy_static;
+use std::sync::Mutex;
 
 lazy_static! {
     /// Global netlist that we'll refer to
@@ -19,18 +20,44 @@ lazy_static! {
     pub static ref PINS: Mutex<Vec<WireIndex>> = Mutex::new(vec![]);
 }
 
-// TODO: Better error handling
+#[cxx::bridge(namespace = "org::crfs")]
+mod ffi {
+    // Shared types
+    #[derive(Debug)]
+    pub enum UnsizedVerilogKind {
+        Byte,
+        ShortInteger,
+        Integer,
+        LongInteger,
+        Time,
+        ShortReal,
+        Real,
+    }
 
-#[no_mangle]
+    #[derive(Debug)]
+    pub enum SizedVerilogKind {
+        Bit,
+        Logic,
+    }
+
+    // Rust types and signatures exposed to C++.
+    extern "Rust" {
+        fn add_new_module(name: String) -> i32;
+        fn add_unsized_input_port(name: String, mod_idx: i32, kind: UnsizedVerilogKind) -> i32;
+        fn add_sized_input_port(
+            name: String,
+            mod_idx: i32,
+            kind: SizedVerilogKind,
+            size: usize,
+        ) -> i32;
+        fn dump_netlist();
+    }
+}
+
 /// Add a new module with `name` to the global netlist
-pub extern "C" fn add_new_module(name: *const c_char) -> i32 {
-    // Create the rust-owned name
-    let rust_name = unsafe { CStr::from_ptr(name) }
-        .to_str()
-        .expect("The string in C must contain valid UTF8")
-        .to_owned();
+pub fn add_new_module(name: String) -> i32 {
     // Create the module instance
-    let new_mod = Module::new(rust_name);
+    let new_mod = Module::new(name);
     // Add the module to the netlist
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
     // Get our new real index
@@ -47,21 +74,9 @@ pub extern "C" fn add_new_module(name: *const c_char) -> i32 {
     raw_idx
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub enum UnsizedVerilogKind {
-    Byte,
-    ShortInteger,
-    Integer,
-    LongInteger,
-    Time,
-    ShortReal,
-    Real,
-}
-
 impl UnsizedVerilogKind {
     pub fn to_verilog_kind(&self) -> VerilogKind {
-        match self {
+        match *self {
             UnsizedVerilogKind::Byte => VerilogKind::Byte,
             UnsizedVerilogKind::ShortInteger => VerilogKind::ShortInteger,
             UnsizedVerilogKind::Integer => VerilogKind::Integer,
@@ -69,6 +84,7 @@ impl UnsizedVerilogKind {
             UnsizedVerilogKind::Time => VerilogKind::Time,
             UnsizedVerilogKind::ShortReal => VerilogKind::ShortReal,
             UnsizedVerilogKind::Real => VerilogKind::Real,
+            _ => unreachable!(),
         }
     }
     pub fn from_verilog_kind(vk: VerilogKind) -> Self {
@@ -85,18 +101,12 @@ impl UnsizedVerilogKind {
     }
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub enum SizedVerilogKind {
-    Bit,
-    Logic,
-}
-
 impl SizedVerilogKind {
     pub fn to_verilog_kind(&self, size: usize) -> VerilogKind {
-        match self {
+        match *self {
             SizedVerilogKind::Bit => VerilogKind::Bit(size),
             SizedVerilogKind::Logic => VerilogKind::Logic(size),
+            _ => unreachable!(),
         }
     }
     pub fn from_verilog_kind(vk: VerilogKind) -> Self {
@@ -136,44 +146,27 @@ fn add_port(mod_idx: i32, port: Port) -> i32 {
     raw_idx
 }
 
-fn add_input_port(name: *const c_char, mod_idx: i32, kind: VerilogKind) -> i32 {
-    // Create the rust-owned name
-    let rust_name = unsafe { CStr::from_ptr(name) }
-        .to_str()
-        .expect("The string in C must contain valid UTF8")
-        .to_owned();
+fn add_input_port(name: String, mod_idx: i32, kind: VerilogKind) -> i32 {
     // Create the new port
-    let port = Port::input(rust_name, kind);
+    let port = Port::input(name, kind);
     add_port(mod_idx, port)
 }
 
-fn add_output_port(name: *const c_char, mod_idx: i32, kind: VerilogKind) -> i32 {
-    // Create the rust-owned name
-    let rust_name = unsafe { CStr::from_ptr(name) }
-        .to_str()
-        .expect("The string in C must contain valid UTF8")
-        .to_owned();
+fn add_output_port(name: String, mod_idx: i32, kind: VerilogKind) -> i32 {
     // Create the new port
-    let port = Port::output(rust_name, kind);
+    let port = Port::output(name, kind);
     add_port(mod_idx, port)
 }
 
-#[no_mangle]
-/// Add an unnsized input port with `name` and `kind` to the module indicated by `mod_idx`.
-/// Returns -1 if the mod_idx points to an invalid module, otherwise returns the unique port id
-pub extern "C" fn add_unsized_input_port(
-    name: *const c_char,
-    mod_idx: i32,
-    kind: UnsizedVerilogKind,
-) -> i32 {
+/// Add an unsized input port with `name` and `kind` to the module indicated by `mod_idx`.
+pub fn add_unsized_input_port(name: String, mod_idx: i32, kind: UnsizedVerilogKind) -> i32 {
     add_input_port(name, mod_idx, kind.to_verilog_kind())
 }
 
-#[no_mangle]
 /// Add a sized input port with `name` and `kind` to the module indicated by `mod_idx`.
 /// Returns -1 if the mod_idx points to an invalid module, otherwise returns the unique port id
-pub extern "C" fn add_sized_input_port(
-    name: *const c_char,
+pub fn add_sized_input_port(
+    name: String,
     mod_idx: i32,
     kind: SizedVerilogKind,
     size: usize,
@@ -181,22 +174,16 @@ pub extern "C" fn add_sized_input_port(
     add_input_port(name, mod_idx, kind.to_verilog_kind(size))
 }
 
-#[no_mangle]
 /// Add an unnsized input port with `name` and `kind` to the module indicated by `mod_idx`.
 /// Returns -1 if the mod_idx points to an invalid module, otherwise returns the unique port id
-pub extern "C" fn add_unsized_output_port(
-    name: *const c_char,
-    mod_idx: i32,
-    kind: UnsizedVerilogKind,
-) -> i32 {
+pub fn add_unsized_output_port(name: String, mod_idx: i32, kind: UnsizedVerilogKind) -> i32 {
     add_output_port(name, mod_idx, kind.to_verilog_kind())
 }
 
-#[no_mangle]
 /// Add a sized input port with `name` and `kind` to the module indicated by `mod_idx`.
 /// Returns -1 if the mod_idx points to an invalid module, otherwise returns the unique port id
-pub extern "C" fn add_sized_output_port(
-    name: *const c_char,
+pub fn add_sized_output_port(
+    name: String,
     mod_idx: i32,
     kind: SizedVerilogKind,
     size: usize,
@@ -204,12 +191,8 @@ pub extern "C" fn add_sized_output_port(
     add_output_port(name, mod_idx, kind.to_verilog_kind(size))
 }
 
-#[no_mangle]
 /// Print a debug output of the netlist to stdout
-pub extern "C" fn dump_netlist() {
+pub fn dump_netlist() {
     let netlist = NETLIST.lock().expect("Lock won't panic");
     println!("{:#?}", &*netlist);
 }
-
-#[no_mangle]
-pub extern "C" fn connect(out_pin_idx: i32, in_pin_idx: i32) ->  {}

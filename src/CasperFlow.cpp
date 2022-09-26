@@ -1,5 +1,4 @@
 #include "CasperFlow.hpp"
-#include "imnodes.h"
 
 void cf_editor(bool *p_open) {
   ImGui::Begin("Editor", p_open);
@@ -163,17 +162,7 @@ int main() {
   WindowState ws;
 
   // Add a node to the rust netlist
-  int mod_idx = add_new_module("Logical");
-  // Add some ports
-  int pin_a_idx =
-      add_sized_input_port("A", mod_idx, SizedVerilogKind::Logic, 16);
-  int pin_b_idx =
-      add_sized_input_port("B", mod_idx, SizedVerilogKind::Logic, 16);
-  int pin_c_idx =
-      add_sized_output_port("C", mod_idx, SizedVerilogKind::Logic, 16);
-
-  // And print to see if it worked
-  dump_netlist();
+  int mod_idx = org::crfs::add_new_module("Logical");
 
   // Run the gui!
   while (!glfwWindowShouldClose(window)) {
