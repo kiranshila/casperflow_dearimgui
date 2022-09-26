@@ -7,6 +7,7 @@ edition = "2021"
 crate-type = ["staticlib"]
 
 [dependencies]
+anyhow = "1.0.65"
 cxx = "1.0"
 generational-arena = "0.2.8"
 lazy_static = "1.4.0"

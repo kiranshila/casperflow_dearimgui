@@ -1,10 +1,24 @@
 #include "CasperFlow.hpp"
 
+static int current_id = 0;
+
 void cf_editor(bool *p_open) {
   ImGui::Begin("Editor", p_open);
   ImNodes::BeginNodeEditor();
 
+  if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+      ImNodes::IsEditorHovered() && ImGui::IsKeyReleased(GLFW_KEY_A)) {
+    const int node_id = ++current_id;
+    ImNodes::SetNodeScreenSpacePos(node_id, ImGui::GetMousePos());
+    ImNodes::SnapNodeToGrid(node_id);
+  }
+
   // Draw nodes and wires
+  ImNodes::BeginNode(current_id);
+  ImNodes::BeginNodeTitleBar();
+  ImGui::TextUnformatted("node");
+  ImNodes::EndNodeTitleBar();
+  ImNodes::EndNode();
 
   ImNodes::MiniMap(0.1f, ImNodesMiniMapLocation_BottomRight);
   ImNodes::EndNodeEditor();
@@ -151,6 +165,8 @@ static void cf_main_menu(WindowState *ws) {
   }
 }
 
+namespace rs = org::cfrs;
+
 int main() {
 
   GLFWwindow *window = gui_init();
@@ -162,7 +178,14 @@ int main() {
   WindowState ws;
 
   // Add a node to the rust netlist
-  int mod_idx = org::crfs::add_new_module("Logical");
+  int mod_idx = rs::add_new_module("Logical");
+  int a_idx =
+      rs::add_sized_input_port("A", mod_idx, rs::SizedVerilogKind::Logic, 16);
+  int b_idx =
+      rs::add_sized_input_port("B", mod_idx, rs::SizedVerilogKind::Logic, 16);
+  int out_idx = rs::add_sized_output_port("Out", mod_idx,
+                                          rs::SizedVerilogKind::Logic, 16);
+  rs::dump_netlist();
 
   // Run the gui!
   while (!glfwWindowShouldClose(window)) {

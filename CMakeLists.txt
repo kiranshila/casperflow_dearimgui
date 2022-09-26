@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
-project("CasperFlow" CXX)
+project("casper_flow" CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -27,7 +27,7 @@ set(CFRS_LIB ${CARGO_BUILD_FOLDER}/${CMAKE_STATIC_LIBRARY_PREFIX}cfrs${CMAKE_STA
 add_custom_command(
         OUTPUT ${CFRS_BRIDGE_CPP} ${CFRS_LIB}
         COMMAND CARGO_TARGET_DIR=${CARGO_TARGET_DIR} cargo build --profile ${CARGO_PROFILE} --manifest-path ${CARGO_MANIFEST}
-        DEPENDS ${CFRS_SOURCE_FILEs}
+        DEPENDS ${CFRS_SOURCE_FILE}
         USES_TERMINAL
 )
 
@@ -38,7 +38,7 @@ conan_basic_setup()
 # Add the imnodes deps
 add_subdirectory("vendor")
 
-add_executable(casper_flow 
+add_executable(${PROJECT_NAME} 
     ${CMAKE_SOURCE_DIR}/src/CasperFlow.cpp
     ${CMAKE_SOURCE_DIR}/src/lowlevel_gui.cpp
     ${CMAKE_SOURCE_DIR}/src/node_style.cpp
@@ -47,8 +47,8 @@ add_executable(casper_flow
     ${CFRS_BRIDGE_CPP})
 
 target_include_directories(
-    casper_flow
+    ${PROJECT_NAME} 
     PRIVATE
     ${CARGO_TARGET_DIR}/cxxbridge/cfrs/src/)
 
-target_link_libraries(casper_flow ${CONAN_LIBS} imnodes ${CFRS_LIB})
+target_link_libraries(${PROJECT_NAME} ${CONAN_LIBS} imnodes ${CFRS_LIB})
