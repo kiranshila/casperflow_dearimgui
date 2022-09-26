@@ -178,13 +178,9 @@ int main() {
   WindowState ws;
 
   // Add a node to the rust netlist
-  int mod_idx = rs::add_new_module("Logical");
-  int a_idx =
-      rs::add_sized_input_port("A", mod_idx, rs::SizedVerilogKind::Logic, 16);
-  int b_idx =
-      rs::add_sized_input_port("B", mod_idx, rs::SizedVerilogKind::Logic, 16);
-  int out_idx = rs::add_sized_output_port("Out", mod_idx,
-                                          rs::SizedVerilogKind::Logic, 16);
+  auto mod_idx = rs::add_new_module("Logical");
+  rs::add_sized_input_port("A", rs::SizedVerilogKind::Bit, mod_idx, 16);
+  rs::add_sized_input_port("B", rs::SizedVerilogKind::Bit, mod_idx, 16);
   rs::dump_netlist();
 
   // Run the gui!

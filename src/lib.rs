@@ -3,21 +3,17 @@ pub mod verilog;
 
 use crate::{
     ffi::{SizedVerilogKind, UnsizedVerilogKind},
-    verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind, WireIndex},
+    verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind},
 };
+use ffi::CModIndex;
+use generational_arena::Index;
 use lazy_static::lazy_static;
 use std::sync::Mutex;
+use verilog::PortIndex;
 
 lazy_static! {
     /// Global netlist that we'll refer to
     pub static ref NETLIST: Mutex<Netlist> = Mutex::new(Netlist::new());
-    /// Global counter to generate unique indices for modules
-    pub static ref NEXT_MOD_IDX: Mutex<i32> = Mutex::new(0);
-    /// Global counter to generate unique indices for pins
-    pub static ref NEXT_PIN_IDX: Mutex<i32> = Mutex::new(0);
-    /// Vecs from imnodes idx to a generational index
-    pub static ref MODS: Mutex<Vec<ModuleIndex>> = Mutex::new(vec![]);
-    pub static ref PINS: Mutex<Vec<WireIndex>> = Mutex::new(vec![]);
 }
 
 #[cxx::bridge(namespace = "org::cfrs")]
@@ -40,53 +36,73 @@ mod ffi {
         Logic,
     }
 
+    #[derive(Debug, Copy, Clone)]
+    pub struct CModIndex {
+        index: usize,
+        generation: u64,
+    }
+
     // Rust types and signatures exposed to C++.
     extern "Rust" {
-        fn add_new_module(name: String) -> i32;
-        fn add_unsized_input_port(
-            name: String,
-            mod_idx: i32,
-            kind: UnsizedVerilogKind,
-        ) -> Result<i32>;
-        fn add_sized_input_port(
-            name: String,
-            mod_idx: i32,
-            kind: SizedVerilogKind,
-            size: usize,
-        ) -> Result<i32>;
-        fn add_unsized_output_port(
-            name: String,
-            mod_idx: i32,
-            kind: UnsizedVerilogKind,
-        ) -> Result<i32>;
-        fn add_sized_output_port(
-            name: String,
-            mod_idx: i32,
-            kind: SizedVerilogKind,
-            size: usize,
-        ) -> Result<i32>;
+        type ModuleIndex;
+        fn add_new_module(name: String) -> CModIndex;
+        fn add_sized_input_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize);
+        fn add_sized_output_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize);
+        fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
+        fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
         fn dump_netlist();
     }
 }
 
+impl CModIndex {
+    pub fn to_module_index(&self) -> ModuleIndex {
+        ModuleIndex(Index::from_raw_parts(self.index, self.generation))
+    }
+    pub fn from_module_index(idx: ModuleIndex) -> Self {
+        let (index, generation) = idx.0.into_raw_parts();
+        Self { index, generation }
+    }
+}
+
 /// Add a new module with `name` to the global netlist
-pub fn add_new_module(name: String) -> i32 {
+pub fn add_new_module(name: String) -> CModIndex {
     // Create the module instance
     let new_mod = Module::new(name);
     // Add the module to the netlist
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    // Get our new real index
-    let idx = (*netlist).add_module(new_mod);
-    // Grab the next valid id
-    let mut next_id = NEXT_MOD_IDX.lock().expect("Lock won't panic");
-    let raw_idx = *next_id;
-    // Increment the counter
-    *next_id += 1;
-    // Add the real index to the mods
-    let mut mods = MODS.lock().expect("Lock won't panic");
-    (*mods).push(idx);
-    // Return the id to imnodes
-    raw_idx
+    CModIndex::from_module_index((*netlist).add_module(new_mod))
+}
+
+/// Wraps netlist.add_port with the global netlist
+pub fn add_port(port: Port, idx: ModuleIndex) -> Option<PortIndex> {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    netlist.add_port(port, idx)
+}
+
+// C++ interface
+
+pub fn add_input_port(name: String, kind: VerilogKind, idx: ModuleIndex) -> Option<PortIndex> {
+    add_port(Port::input(name, kind), idx)
+}
+
+pub fn add_output_port(name: String, kind: VerilogKind, idx: ModuleIndex) -> Option<PortIndex> {
+    add_port(Port::output(name, kind), idx)
+}
+
+pub fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex) {
+    add_input_port(name, kind.to_verilog_kind(), idx.to_module_index());
+}
+
+pub fn add_sized_input_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize) {
+    add_input_port(name, kind.to_verilog_kind(size), idx.to_module_index());
+}
+
+pub fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex) {
+    add_output_port(name, kind.to_verilog_kind(), idx.to_module_index());
+}
+
+pub fn add_sized_output_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize) {
+    add_output_port(name, kind.to_verilog_kind(size), idx.to_module_index());
 }
 
 impl UnsizedVerilogKind {
@@ -131,94 +147,6 @@ impl SizedVerilogKind {
             _ => unreachable!(),
         }
     }
-}
-
-fn add_port(mod_idx: i32, port: Port) -> anyhow::Result<i32> {
-    // Grab the module indicated by the mod_idx
-    let mods = MODS.lock().expect("Lock won't panic");
-    let mi = match mods.get(mod_idx as usize) {
-        Some(m) => m,
-        None => {
-            return Err(anyhow::Error::msg(
-                "Raw module index doesn't exist in global modules.",
-            ))
-        }
-    };
-    let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    let m =
-        match (*netlist).get_mut_module(*mi) {
-            Some(m_ref) => m_ref,
-            None => return Err(anyhow::Error::msg(
-                "Module index retrieved from the global module table doesn't exist in the netlist.",
-            )),
-        };
-    // Add this port to the module
-    let port_index = m.add_port(port);
-    // Create the wire index of this
-    let idx = (*mi, port_index);
-    // Grab the next valid port id
-    let mut next_id = NEXT_PIN_IDX.lock().expect("Lock won't panic");
-    let raw_idx = *next_id;
-    // Increment the counter
-    *next_id += 1;
-    // Add the real index to the pins
-    let mut mods = PINS.lock().expect("Lock won't panic");
-    (*mods).push(idx);
-    // Return the id to imnodes
-    Ok(raw_idx)
-}
-
-fn add_input_port(name: String, mod_idx: i32, kind: VerilogKind) -> anyhow::Result<i32> {
-    // Create the new port
-    let port = Port::input(name, kind);
-    add_port(mod_idx, port)
-}
-
-fn add_output_port(name: String, mod_idx: i32, kind: VerilogKind) -> anyhow::Result<i32> {
-    // Create the new port
-    let port = Port::output(name, kind);
-    add_port(mod_idx, port)
-}
-
-/// Add an unsized input port with `name` and `kind` to the module indicated by `mod_idx`.
-pub fn add_unsized_input_port(
-    name: String,
-    mod_idx: i32,
-    kind: UnsizedVerilogKind,
-) -> anyhow::Result<i32> {
-    add_input_port(name, mod_idx, kind.to_verilog_kind())
-}
-
-/// Add a sized input port with `name` and `kind` to the module indicated by `mod_idx`.
-/// Returns -1 if the mod_idx points to an invalid module, otherwise returns the unique port id
-pub fn add_sized_input_port(
-    name: String,
-    mod_idx: i32,
-    kind: SizedVerilogKind,
-    size: usize,
-) -> anyhow::Result<i32> {
-    add_input_port(name, mod_idx, kind.to_verilog_kind(size))
-}
-
-/// Add an unnsized input port with `name` and `kind` to the module indicated by `mod_idx`.
-/// Returns -1 if the mod_idx points to an invalid module, otherwise returns the unique port id
-pub fn add_unsized_output_port(
-    name: String,
-    mod_idx: i32,
-    kind: UnsizedVerilogKind,
-) -> anyhow::Result<i32> {
-    add_output_port(name, mod_idx, kind.to_verilog_kind())
-}
-
-/// Add a sized input port with `name` and `kind` to the module indicated by `mod_idx`.
-/// Returns -1 if the mod_idx points to an invalid module, otherwise returns the unique port id
-pub fn add_sized_output_port(
-    name: String,
-    mod_idx: i32,
-    kind: SizedVerilogKind,
-    size: usize,
-) -> anyhow::Result<i32> {
-    add_output_port(name, mod_idx, kind.to_verilog_kind(size))
 }
 
 /// Print a debug output of the netlist to stdout

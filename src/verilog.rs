@@ -1,5 +1,10 @@
 use generational_arena::{Arena, Index};
-use std::collections::HashMap;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ModuleIndex(pub Index);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PortIndex(pub Index);
 
 #[repr(C)]
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
@@ -60,12 +65,12 @@ pub enum Port {
     Input {
         name: String,
         kind: VerilogKind,
-        connection: Option<WireIndex>,
+        connection: Option<PortIndex>,
     },
     Output {
         name: String,
         kind: VerilogKind,
-        connections: Vec<WireIndex>,
+        connections: Vec<PortIndex>,
     },
 }
 
@@ -115,46 +120,28 @@ impl Port {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleIndex(pub Index);
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct PortIndex(pub Index);
-
-pub type WireIndex = (ModuleIndex, PortIndex);
-
 #[derive(Debug, Clone)]
 pub struct Module {
     pub name: String,
-    pub ports: Arena<Port>,
-    pub port_map: HashMap<String, PortIndex>,
+    pub inputs: Vec<PortIndex>,
+    pub outputs: Vec<PortIndex>,
 }
 
 impl Module {
     pub fn new(name: String) -> Self {
         Self {
             name,
-            ports: Arena::new(),
-            port_map: HashMap::new(),
+            inputs: vec![],
+            outputs: vec![],
         }
-    }
-    pub fn add_port(&mut self, port: Port) -> PortIndex {
-        // Find if a port with this name already exists and remove it
-        let key = port.name().to_owned();
-        if let Some(idx) = self.port_map.get(&key) {
-            self.ports.remove(idx.0);
-        }
-        // Insert into the ports
-        let new_idx = PortIndex(self.ports.insert(port));
-        self.port_map.insert(key, new_idx);
-        new_idx
     }
 }
 
 #[derive(Debug)]
 pub struct Netlist {
     modules: Arena<Module>,
-    wires: Vec<(WireIndex, WireIndex)>,
+    ports: Arena<Port>,
+    wires: Vec<(PortIndex, PortIndex)>,
 }
 
 #[repr(C)]
@@ -170,12 +157,56 @@ impl Netlist {
     pub fn new() -> Self {
         Self {
             modules: Arena::new(),
+            ports: Arena::new(),
             wires: vec![],
         }
     }
 
     pub fn add_module(&mut self, module: Module) -> ModuleIndex {
         ModuleIndex(self.modules.insert(module))
+    }
+
+    pub fn remove_module(&mut self, idx: ModuleIndex) -> Option<Module> {
+        // Remove the module
+        let m = self.modules.remove(idx.0)?;
+        // Remove all the associated ports
+        for pi in m.inputs.iter() {
+            self.ports.remove(pi.0);
+        }
+        for pi in m.outputs.iter() {
+            self.ports.remove(pi.0);
+        }
+        Some(m)
+    }
+
+    pub fn add_port(&mut self, port: Port, idx: ModuleIndex) -> Option<PortIndex> {
+        let is_input = matches!(port, Port::Input { .. });
+        let pi = PortIndex(self.ports.insert(port));
+        let m = self.modules.get_mut(idx.0)?;
+        if is_input {
+            m.inputs.push(pi)
+        } else {
+            m.outputs.push(pi)
+        }
+        Some(pi)
+    }
+
+    pub fn remove_input_port(&mut self, mod_idx: ModuleIndex, port_idx: usize) -> Option<Port> {
+        // Grab the module by index
+        let m = self.modules.get(mod_idx.0)?;
+        // Grab the specific port index
+        let pi = m.inputs.get(port_idx)?;
+        // Remove the port
+        self.ports.remove(pi.0)
+    }
+
+    pub fn remove_output_port(&mut self, mod_idx: ModuleIndex, port_idx: usize) -> Option<Port> {
+        // Grab the module by index
+        let m = self.modules.get(mod_idx.0)?;
+        // Grab the specific port index
+        let pi = m.outputs.get(port_idx)?;
+        // Remove the port
+        self.ports.remove(pi.0)
     }
 
     pub fn get_module(&self, idx: ModuleIndex) -> Option<&Module> {
@@ -188,25 +219,41 @@ impl Netlist {
 
     pub fn connect(
         &mut self,
-        output: WireIndex,
-        input: WireIndex,
+        output_mod: ModuleIndex,
+        output_port: usize,
+        input_mod: ModuleIndex,
+        input_port: usize,
     ) -> Result<usize, ConnectionError> {
         // Check that input and output are different
-        if input == output {
+        if input_mod == output_mod {
             return Err(ConnectionError::BadIndex);
         }
-        let (in_port, out_port) = self.modules.get2_mut(input.0 .0, output.0 .0);
+        // Get the modules
+        let (in_mod, out_mod) = self.modules.get2_mut(input_mod.0, output_mod.0);
 
-        // Check input exists and is input
-        let in_port = in_port.and_then(|x| x.ports.get_mut(input.1 .0));
+        // Get the port indices
+        let in_port_idx = in_mod.and_then(|m| m.inputs.get(input_port));
+        let out_port_idx = out_mod.and_then(|m| m.outputs.get(output_port));
+
+        let in_port_idx = match in_port_idx {
+            Some(pi) => pi,
+            None => return Err(ConnectionError::BadIndex),
+        };
+
+        let out_port_idx = match out_port_idx {
+            Some(pi) => pi,
+            None => return Err(ConnectionError::BadIndex),
+        };
+
+        // Grab the ports
+        let (in_port, out_port) = self.ports.get2_mut(in_port_idx.0, out_port_idx.0);
+
+        // Check directions and existance
         let in_port = match in_port {
             Some(port) if matches!(port, Port::Input { .. }) => port,
             Some(_) => return Err(ConnectionError::DirectionMismatch),
             None => return Err(ConnectionError::BadIndex),
         };
-
-        // Check output exists and is output
-        let out_port = out_port.and_then(|x| x.ports.get_mut(output.1 .0));
         let out_port = match out_port {
             Some(port) if matches!(port, Port::Output { .. }) => port,
             Some(_) => return Err(ConnectionError::DirectionMismatch),
@@ -228,23 +275,27 @@ impl Netlist {
         ) {
             return Err(ConnectionError::InputDriven);
         }
+
         // Drive the input
         if let Port::Input {
             ref mut connection, ..
         } = in_port
         {
-            *connection = Some(output);
+            *connection = Some(*out_port_idx);
         }
+
         // Add to the list of driving inputs to the output
         if let Port::Output {
             ref mut connections,
             ..
         } = out_port
         {
-            connections.push(input);
+            connections.push(*in_port_idx);
         }
+
         // Add the wire
-        self.wires.push((input, output));
+        self.wires.push((*in_port_idx, *out_port_idx));
+
         // Return the index we just added
         Ok(self.wires.len() - 1)
     }
@@ -259,65 +310,48 @@ mod tests {
 
     #[test]
     fn test_netlists() {
-        // Some Modules
-        let mut and_1 = Module::new("and".to_owned());
-        let and_a_idx = and_1.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)));
-        let and_b_idx = and_1.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)));
-        let and_out_idx = and_1.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)));
+        // Create the netlist
+        let mut netlist = Netlist::new();
 
-        let and_2 = and_1.clone();
+        // Add some Modules
+        let and_1 = netlist.add_module(Module::new("and".to_owned()));
+        netlist.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)), and_1);
+        netlist.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)), and_1);
+        netlist.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)), and_1);
 
-        let mut or = Module::new("or".to_owned());
-        let or_a_idx = or.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)));
-        let or_b_idx = or.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)));
-        let or_out_idx = or.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)));
+        let and_2 = netlist.add_module(Module::new("and".to_owned()));
+        netlist.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)), and_2);
+        netlist.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)), and_2);
+        netlist.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)), and_2);
+
+        let or = netlist.add_module(Module::new("or".to_owned()));
+        netlist.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)), or);
+        netlist.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)), or);
+        netlist.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)), or);
 
         // Some "external" ports
-        let mut in_1 = Module::new("1".to_owned());
-        let in_1_in_idx = in_1.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)));
-        let mut in_2 = Module::new("2".to_owned());
-        let in_2_in_idx = in_2.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)));
-        let mut in_3 = Module::new("3".to_owned());
-        let in_3_in_idx = in_3.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)));
-        let mut in_4 = Module::new("4".to_owned());
-        let in_4_in_idx = in_4.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)));
-        let mut out = Module::new("5".to_owned());
-        let out_out_idx = out.add_port(Port::input("Out".to_owned(), VerilogKind::Logic(1)));
+        let in_1 = netlist.add_module(Module::new("In".to_owned()));
+        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_1);
+        let in_2 = netlist.add_module(Module::new("In".to_owned()));
+        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_2);
+        let in_3 = netlist.add_module(Module::new("In".to_owned()));
+        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_3);
+        let in_4 = netlist.add_module(Module::new("In".to_owned()));
+        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_4);
 
-        // Add modules to netlist
-        let mut netlist = Netlist::new();
-        let and_1_idx = netlist.add_module(and_1);
-        let and_2_idx = netlist.add_module(and_2);
-        let or_idx = netlist.add_module(or);
-        let in_1_idx = netlist.add_module(in_1);
-        let in_2_idx = netlist.add_module(in_2);
-        let in_3_idx = netlist.add_module(in_3);
-        let in_4_idx = netlist.add_module(in_4);
-        let out_idx = netlist.add_module(out);
+        let out = netlist.add_module(Module::new("Out".to_owned()));
+        netlist.add_port(Port::input("Out".to_owned(), VerilogKind::Logic(1)), out);
 
         // Make connections, none of these should fail
-        netlist
-            .connect((in_1_idx, in_1_in_idx), (and_1_idx, and_a_idx))
-            .unwrap();
-        netlist
-            .connect((in_2_idx, in_2_in_idx), (and_1_idx, and_b_idx))
-            .unwrap();
-        netlist
-            .connect((in_3_idx, in_3_in_idx), (and_2_idx, and_a_idx))
-            .unwrap();
-        netlist
-            .connect((in_4_idx, in_4_in_idx), (and_2_idx, and_b_idx))
-            .unwrap();
+        netlist.connect(in_1, 0, and_1, 0).unwrap();
+        netlist.connect(in_2, 0, and_1, 1).unwrap();
 
-        netlist
-            .connect((and_1_idx, and_out_idx), (or_idx, or_a_idx))
-            .unwrap();
-        netlist
-            .connect((and_2_idx, and_out_idx), (or_idx, or_b_idx))
-            .unwrap();
+        netlist.connect(in_3, 0, and_2, 0).unwrap();
+        netlist.connect(in_4, 0, and_2, 1).unwrap();
 
-        netlist
-            .connect((or_idx, or_out_idx), (out_idx, out_out_idx))
-            .unwrap();
+        netlist.connect(and_1, 0, or, 0).unwrap();
+        netlist.connect(and_2, 0, or, 1).unwrap();
+
+        netlist.connect(or, 0, out, 0).unwrap();
     }
 }
