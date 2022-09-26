@@ -1,62 +1,11 @@
 #include "CasperFlow.hpp"
 #include "imnodes.h"
 
-void in_port(int node_id, int pin_id) {
-  ImNodes::BeginNode(node_id);
-  ImNodes::BeginOutputAttribute(pin_id);
-  ImGui::Text("In");
-  ImNodes::EndOutputAttribute();
-  ImNodes::EndNode();
-}
-
-void out_port(int node_id, int pin_id) {
-  ImNodes::BeginNode(node_id);
-  ImNodes::BeginInputAttribute(pin_id);
-  ImGui::Text("Out");
-  ImNodes::EndInputAttribute();
-  ImNodes::EndNode();
-}
-
-void logical(int node_id, int in_a_id, int in_b_id, int out_id) {
-  ImNodes::BeginNode(node_id);
-
-  ImNodes::BeginNodeTitleBar();
-  ImGui::TextUnformatted("Logical");
-  ImNodes::EndNodeTitleBar();
-
-  ImNodes::BeginInputAttribute(in_a_id);
-  ImGui::Text("A");
-  ImNodes::EndInputAttribute();
-
-  ImNodes::BeginInputAttribute(in_b_id);
-  ImGui::Text("B");
-  ImNodes::EndInputAttribute();
-
-  ImNodes::BeginOutputAttribute(out_id);
-  ImGui::Text("Out");
-  ImNodes::EndOutputAttribute();
-
-  ImNodes::EndNode();
-}
-
 void cf_editor(bool *p_open) {
   ImGui::Begin("Editor", p_open);
   ImNodes::BeginNodeEditor();
 
-  in_port(1, 2);
-  in_port(3, 4);
-  in_port(5, 6);
-
-  logical(7, 8, 9, 10);
-  logical(11, 12, 13, 14);
-
-  out_port(15, 16);
-
-  ImNodes::Link(17, 2, 8);
-  ImNodes::Link(18, 4, 9);
-  ImNodes::Link(19, 6, 12);
-  ImNodes::Link(20, 10, 13);
-  ImNodes::Link(21, 14, 16);
+  // Draw nodes and wires
 
   ImNodes::MiniMap(0.1f, ImNodesMiniMapLocation_BottomRight);
   ImNodes::EndNodeEditor();
@@ -212,6 +161,19 @@ int main() {
 
   ApplicationLog log;
   WindowState ws;
+
+  // Add a node to the rust netlist
+  int mod_idx = add_new_module("Logical");
+  // Add some ports
+  int pin_a_idx =
+      add_sized_input_port("A", mod_idx, SizedVerilogKind::Logic, 16);
+  int pin_b_idx =
+      add_sized_input_port("B", mod_idx, SizedVerilogKind::Logic, 16);
+  int pin_c_idx =
+      add_sized_output_port("C", mod_idx, SizedVerilogKind::Logic, 16);
+
+  // And print to see if it worked
+  dump_netlist();
 
   // Run the gui!
   while (!glfwWindowShouldClose(window)) {
