@@ -343,34 +343,12 @@ impl Netlist {
         self.ports.get(idx.0)
     }
 
-    pub fn connect(
+    /// Use the real generational indices to make the connection
+    pub fn connect_real_idx(
         &mut self,
-        output_mod: ModuleIndex,
-        output_port: usize,
-        input_mod: ModuleIndex,
-        input_port: usize,
+        out_port_idx: PortIndex,
+        in_port_idx: PortIndex,
     ) -> Result<usize, ConnectionResult> {
-        // Check that input and output are different
-        if input_mod == output_mod {
-            return Err(ConnectionResult::BadIndex);
-        }
-        // Get the modules
-        let (in_mod, out_mod) = self.modules.get2_mut(input_mod.0, output_mod.0);
-
-        // Get the port indices
-        let in_port_idx = in_mod.and_then(|m| m.inputs.get(input_port));
-        let out_port_idx = out_mod.and_then(|m| m.outputs.get(output_port));
-
-        let in_port_idx = match in_port_idx {
-            Some(pi) => pi,
-            None => return Err(ConnectionResult::BadIndex),
-        };
-
-        let out_port_idx = match out_port_idx {
-            Some(pi) => pi,
-            None => return Err(ConnectionResult::BadIndex),
-        };
-
         // Grab the ports
         let (in_port, out_port) = self.ports.get2_mut(in_port_idx.0, out_port_idx.0);
 
@@ -407,7 +385,7 @@ impl Netlist {
             ref mut connection, ..
         } = in_port
         {
-            *connection = Some(*out_port_idx);
+            *connection = Some(out_port_idx);
         }
 
         // Add to the list of driving inputs to the output
@@ -416,21 +394,55 @@ impl Netlist {
             ..
         } = out_port
         {
-            connections.push(*in_port_idx);
+            connections.push(in_port_idx);
         }
 
         // Add the wire
-        self.wires.push((*in_port_idx, *out_port_idx));
+        self.wires.push((in_port_idx, out_port_idx));
 
         // Return the index we just added
         Ok(self.wires.len() - 1)
+    }
+
+    pub fn connect(
+        &mut self,
+        output_mod: ModuleIndex,
+        output_port: usize,
+        input_mod: ModuleIndex,
+        input_port: usize,
+    ) -> Result<usize, ConnectionResult> {
+        // Check that input and output are different
+        if input_mod == output_mod {
+            return Err(ConnectionResult::BadIndex);
+        }
+        let (input, output) = {
+            // Get the modules
+            let (in_mod, out_mod) = self.modules.get2_mut(input_mod.0, output_mod.0);
+
+            // Get the port indices
+            let in_port_idx = in_mod.and_then(|m| m.inputs.get(input_port));
+            let out_port_idx = out_mod.and_then(|m| m.outputs.get(output_port));
+
+            let in_port_idx = match in_port_idx {
+                Some(pi) => pi,
+                None => return Err(ConnectionResult::BadIndex),
+            };
+
+            let out_port_idx = match out_port_idx {
+                Some(pi) => pi,
+                None => return Err(ConnectionResult::BadIndex),
+            };
+
+            (*in_port_idx, *out_port_idx)
+        };
+        self.connect_real_idx(input, output)
     }
 }
 
 #[cfg(test)]
 mod tests {
 
-    use crate::verilog::{Port, VerilogKind};
+    use crate::verilog::Port;
 
     use super::*;
 

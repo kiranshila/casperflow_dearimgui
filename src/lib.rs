@@ -9,7 +9,7 @@ use bimap::BiMap;
 use ffi::{CGraph, CModIndex, CModule, CPort, CWire, ConnectionResult};
 use generational_arena::Index;
 use lazy_static::lazy_static;
-use std::sync::Mutex;
+use std::{collections::HashMap, sync::Mutex};
 use verilog::{PortIndex, VerilogNetKind, VerilogVariableKind};
 
 lazy_static! {
@@ -19,6 +19,8 @@ lazy_static! {
     pub static ref PORT_MAP: Mutex<BiMap<PortIndex,i32>> = Mutex::new(BiMap::new());
     // Same goes for module id
     pub static ref MOD_MAP: Mutex<BiMap<ModuleIndex,i32>> = Mutex::new(BiMap::new());
+    // We alo need to know, given a port - what module it is in
+    pub static ref PORT_TO_MOD: Mutex<HashMap<PortIndex,ModuleIndex>> = Mutex::new(HashMap::new());
 }
 
 #[cxx::bridge(namespace = "org::cfrs")]
@@ -112,6 +114,7 @@ mod ffi {
             input_mod: CModIndex,
             input_port: usize,
         ) -> ConnectionResult;
+        fn connect2(port_a_id: i32, port_b_id: i32) -> ConnectionResult;
         fn get_graph() -> CGraph;
         fn get_type(id: i32) -> String;
     }
@@ -288,6 +291,7 @@ pub fn get_graph() -> CGraph {
     let netlist = NETLIST.lock().expect("Lock won't panic");
     let mut mod_map = MOD_MAP.lock().expect("Lock won't panic");
     let mut port_map = PORT_MAP.lock().expect("Lock won't panic");
+    let mut port_to_mod = PORT_TO_MOD.lock().expect("Lock won't panic");
 
     // Clear all our old drawing state
     (*mod_map).clear();
@@ -300,7 +304,7 @@ pub fn get_graph() -> CGraph {
     let modules = (*netlist)
         .modules()
         .enumerate()
-        .map(|(id, (_, m))| {
+        .map(|(id, (mi, m))| {
             let id = id as i32;
             CModule {
                 id,
@@ -314,8 +318,9 @@ pub fn get_graph() -> CGraph {
                         let name = port.name().to_owned();
                         // Increment the global id counter
                         port_id += 1;
-                        // Create the lookup
+                        // Create the lookups
                         port_map.insert(*x, id);
+                        port_to_mod.insert(*x, ModuleIndex(mi));
                         CPort { id, name }
                     })
                     .collect(),
@@ -330,6 +335,7 @@ pub fn get_graph() -> CGraph {
                         port_id += 1;
                         // Create the lookup
                         port_map.insert(*x, id);
+                        port_to_mod.insert(*x, ModuleIndex(mi));
                         CPort { id, name }
                     })
                     .collect(),
@@ -363,6 +369,34 @@ pub fn connect(
         input_mod.to_module_index(),
         input_port,
     ) {
+        Ok(_) => ConnectionResult::ConnectionOk,
+        Err(e) => e,
+    }
+}
+
+pub fn connect2(port_a_id: i32, port_b_id: i32) -> ConnectionResult {
+    // Figure out which module those ids are in
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let port_map = PORT_MAP.lock().expect("Lock won't panic");
+
+    let port_a_idx = (*port_map)
+        .get_by_right(&port_a_id)
+        .expect("This will always exist");
+
+    let port_b_idx = (*port_map)
+        .get_by_right(&port_b_id)
+        .expect("This will always exist");
+
+    let res = if matches!(
+        (*netlist).get_port(*port_a_idx).unwrap(),
+        Port::Input { .. }
+    ) {
+        (*netlist).connect_real_idx(*port_b_idx, *port_a_idx)
+    } else {
+        (*netlist).connect_real_idx(*port_a_idx, *port_b_idx)
+    };
+
+    match res {
         Ok(_) => ConnectionResult::ConnectionOk,
         Err(e) => e,
     }

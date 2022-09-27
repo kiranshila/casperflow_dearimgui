@@ -214,11 +214,11 @@ int main() {
   rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx2, 16,
                             false);
 
-  rs::connect(mod_idx, 0, mod_idx2, 0);
-  rs::connect(mod_idx, 0, mod_idx2, 1);
+  // Track to see if the graph is stale
+  bool stale = true;
 
   // Get graph
-  rs::CGraph graph = rs::get_graph();
+  rs::CGraph graph;
 
   // Run the gui!
   while (!glfwWindowShouldClose(window)) {
@@ -245,6 +245,11 @@ int main() {
       ImGui::DockBuilderFinish(ds_id);
     }
 
+    if (stale) {
+      stale = false;
+      graph = rs::get_graph();
+    }
+
     // Run the layout
     if (ws.show_editor)
       cf_editor(&ws.show_editor, graph);
@@ -256,8 +261,17 @@ int main() {
       ImGui::ShowDemoWindow(&ws.show_demo);
 
     if (ImNodes::IsLinkCreated(&ws.start_attr, &ws.stop_attr)) {
-      std::cout << "Try connect " << ws.start_attr << " " << ws.stop_attr
-                << std::endl;
+      // Attempt to make the connection. Do something? with the error
+      auto result = rs::connect2(ws.start_attr, ws.stop_attr);
+      switch (result) {
+      case org::cfrs::ConnectionResult::BadIndex:
+      case org::cfrs::ConnectionResult::DirectionMismatch:
+      case org::cfrs::ConnectionResult::TypeMismatch:
+      case org::cfrs::ConnectionResult::InputDriven:
+      case org::cfrs::ConnectionResult::ConnectionOk:
+        stale = true;
+        break;
+      }
     }
 
     if (ImNodes::IsLinkHovered(&ws.link)) {
