@@ -1,3 +1,5 @@
+use std::fmt::Display;
+
 use generational_arena::{Arena, Index};
 
 use crate::ffi::ConnectionResult;
@@ -8,18 +10,138 @@ pub struct ModuleIndex(pub Index);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PortIndex(pub Index);
 
-#[repr(C)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+/// These are the verilog types that must be driven. The value channges
+/// when the driver changes value. These identifiers represent wires.
+pub enum VerilogNetKind {
+    /// Simple interconnecting wire
+    Wire,
+    /// Wired outputs OR together
+    WOr,
+    /// Wired outputs AND together
+    WAnd,
+    /// Pulls down when TriStated
+    Tri0,
+    /// Pulls up when TriStated
+    Tri1,
+    /// Constant Logic 0
+    Supply0,
+    /// Constant Logic 1,
+    Supply1,
+    /// Stores the lasts value when TriStated
+    TriReg,
+}
+
+impl Default for VerilogNetKind {
+    fn default() -> Self {
+        VerilogNetKind::Wire
+    }
+}
+
+// TODO: Strength
+
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+/// An identifier of "variable data type" means that it changes value upon
+/// assignment and holds its value until another assignment.
+pub enum VerilogVariableKind {
+    /// Signed 32-bit variable
+    Integer,
+    /// Double-precision floating point
+    Real,
+    /// Any bit size or signedness
+    Reg { signed: bool, size: usize },
+    /// Unsigned 64-bit variable
+    Time,
+}
+
+impl Default for VerilogVariableKind {
+    fn default() -> Self {
+        VerilogVariableKind::Reg {
+            signed: false,
+            size: 1,
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
 pub enum VerilogKind {
-    Bit(usize),
-    Byte,
-    ShortInteger,
-    Integer,
-    LongInteger,
-    Logic(usize),
-    Time,
-    ShortReal,
-    Real,
+    Net {
+        kind: VerilogNetKind,
+        size: usize,
+        signed: bool,
+    },
+    Variable(VerilogVariableKind),
+}
+
+impl Default for VerilogKind {
+    fn default() -> Self {
+        VerilogKind::Net {
+            kind: Default::default(),
+            size: 1,
+            signed: false,
+        }
+    }
+}
+
+impl Display for VerilogKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VerilogKind::Net { kind, size, signed } => {
+                let arr = if *size == 1usize {
+                    if *signed {
+                        format!(" signed ")
+                    } else {
+                        format!("")
+                    }
+                } else {
+                    if *signed {
+                        format!(" signed [{}:{}]", size - 1, 0)
+                    } else {
+                        format!("[{}:{}]", size - 1, 0)
+                    }
+                };
+                match kind {
+                    VerilogNetKind::Wire => write!(f, "wire{}", arr),
+                    VerilogNetKind::WOr => write!(f, "wor{}", arr),
+                    VerilogNetKind::WAnd => write!(f, "wand{}", arr),
+                    VerilogNetKind::Tri0 => write!(f, "tri0{}", arr),
+                    VerilogNetKind::Tri1 => write!(f, "tri1{}", arr),
+                    VerilogNetKind::Supply0 => write!(f, "supply0{}", arr),
+                    VerilogNetKind::Supply1 => write!(f, "supply1{}", arr),
+                    VerilogNetKind::TriReg => write!(f, "trireg{}", arr),
+                }
+            }
+            VerilogKind::Variable(kind) => match kind {
+                VerilogVariableKind::Integer => write!(f, "integer"),
+                VerilogVariableKind::Real => write!(f, "real"),
+                VerilogVariableKind::Reg { signed, size } => {
+                    if *signed {
+                        write!(
+                            f,
+                            "reg signed {}",
+                            if *size == 1usize {
+                                format!("")
+                            } else {
+                                format!("[{}:{}]", size - 1, 0)
+                            }
+                        )
+                    } else {
+                        write!(
+                            f,
+                            "reg{}",
+                            if *size == 1usize {
+                                format!("")
+                            } else {
+                                format!("[{}:{}]", size - 1, 0)
+                            }
+                        )
+                    }
+                }
+                VerilogVariableKind::Time => todo!(),
+            },
+        };
+        Ok(())
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -320,32 +442,32 @@ mod tests {
 
         // Add some Modules
         let and_1 = netlist.add_module(Module::new("and".to_owned()));
-        netlist.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)), and_1);
-        netlist.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)), and_1);
-        netlist.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)), and_1);
+        netlist.add_port(Port::input("A".to_owned(), Default::default()), and_1);
+        netlist.add_port(Port::input("B".to_owned(), Default::default()), and_1);
+        netlist.add_port(Port::output("Out".to_owned(), Default::default()), and_1);
 
         let and_2 = netlist.add_module(Module::new("and".to_owned()));
-        netlist.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)), and_2);
-        netlist.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)), and_2);
-        netlist.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)), and_2);
+        netlist.add_port(Port::input("A".to_owned(), Default::default()), and_2);
+        netlist.add_port(Port::input("B".to_owned(), Default::default()), and_2);
+        netlist.add_port(Port::output("Out".to_owned(), Default::default()), and_2);
 
         let or = netlist.add_module(Module::new("or".to_owned()));
-        netlist.add_port(Port::input("A".to_owned(), VerilogKind::Logic(1)), or);
-        netlist.add_port(Port::input("B".to_owned(), VerilogKind::Logic(1)), or);
-        netlist.add_port(Port::output("Out".to_owned(), VerilogKind::Logic(1)), or);
+        netlist.add_port(Port::input("A".to_owned(), Default::default()), or);
+        netlist.add_port(Port::input("B".to_owned(), Default::default()), or);
+        netlist.add_port(Port::output("Out".to_owned(), Default::default()), or);
 
         // Some "external" ports
         let in_1 = netlist.add_module(Module::new("In".to_owned()));
-        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_1);
+        netlist.add_port(Port::output("In".to_owned(), Default::default()), in_1);
         let in_2 = netlist.add_module(Module::new("In".to_owned()));
-        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_2);
+        netlist.add_port(Port::output("In".to_owned(), Default::default()), in_2);
         let in_3 = netlist.add_module(Module::new("In".to_owned()));
-        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_3);
+        netlist.add_port(Port::output("In".to_owned(), Default::default()), in_3);
         let in_4 = netlist.add_module(Module::new("In".to_owned()));
-        netlist.add_port(Port::output("In".to_owned(), VerilogKind::Logic(1)), in_4);
+        netlist.add_port(Port::output("In".to_owned(), Default::default()), in_4);
 
         let out = netlist.add_module(Module::new("Out".to_owned()));
-        netlist.add_port(Port::input("Out".to_owned(), VerilogKind::Logic(1)), out);
+        netlist.add_port(Port::input("Out".to_owned(), Default::default()), out);
 
         // Make connections, none of these should fail
         netlist.connect(in_1, 0, and_1, 0).unwrap();

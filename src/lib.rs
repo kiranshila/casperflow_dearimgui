@@ -5,15 +5,20 @@ use crate::{
     ffi::{SizedVerilogKind, UnsizedVerilogKind},
     verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind},
 };
+use bimap::BiMap;
 use ffi::{CGraph, CModIndex, CModule, CPort, CWire, ConnectionResult};
 use generational_arena::Index;
 use lazy_static::lazy_static;
-use std::{collections::HashMap, sync::Mutex};
-use verilog::PortIndex;
+use std::sync::Mutex;
+use verilog::{PortIndex, VerilogNetKind, VerilogVariableKind};
 
 lazy_static! {
     /// Global netlist that we'll refer to
     pub static ref NETLIST: Mutex<Netlist> = Mutex::new(Netlist::new());
+    /// Wires ids are just their index in the netlist, but pins are computed during drawing, we'll use a hashmap to keep track
+    pub static ref PORT_MAP: Mutex<BiMap<PortIndex,i32>> = Mutex::new(BiMap::new());
+    // Same goes for module id
+    pub static ref MOD_MAP: Mutex<BiMap<ModuleIndex,i32>> = Mutex::new(BiMap::new());
 }
 
 #[cxx::bridge(namespace = "org::cfrs")]
@@ -21,22 +26,25 @@ mod ffi {
     // Shared types
     #[derive(Debug)]
     pub enum UnsizedVerilogKind {
-        Byte,
-        ShortInteger,
         Integer,
-        LongInteger,
-        Time,
-        ShortReal,
         Real,
+        Time,
     }
 
     #[derive(Debug)]
     pub enum SizedVerilogKind {
-        Bit,
-        Logic,
+        Wire,
+        WOr,
+        WAnd,
+        Tri0,
+        Tri1,
+        Supply0,
+        Supply1,
+        TriReg,
+        Reg,
     }
 
-    #[derive(Debug, Copy, Clone)]
+    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
     pub struct CModIndex {
         index: usize,
         generation: u64,
@@ -81,8 +89,20 @@ mod ffi {
     // Rust types and signatures exposed to C++.
     extern "Rust" {
         fn add_new_module(name: String) -> CModIndex;
-        fn add_sized_input_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize);
-        fn add_sized_output_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize);
+        fn add_sized_input_port(
+            name: String,
+            kind: SizedVerilogKind,
+            idx: CModIndex,
+            size: usize,
+            signed: bool,
+        );
+        fn add_sized_output_port(
+            name: String,
+            kind: SizedVerilogKind,
+            idx: CModIndex,
+            size: usize,
+            signed: bool,
+        );
         fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
         fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
         fn dump_netlist();
@@ -133,58 +153,125 @@ pub fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModI
     add_input_port(name, kind.to_verilog_kind(), idx.to_module_index());
 }
 
-pub fn add_sized_input_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize) {
-    add_input_port(name, kind.to_verilog_kind(size), idx.to_module_index());
+pub fn add_sized_input_port(
+    name: String,
+    kind: SizedVerilogKind,
+    idx: CModIndex,
+    size: usize,
+    signed: bool,
+) {
+    add_input_port(
+        name,
+        kind.to_verilog_kind(size, signed),
+        idx.to_module_index(),
+    );
 }
 
 pub fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex) {
     add_output_port(name, kind.to_verilog_kind(), idx.to_module_index());
 }
 
-pub fn add_sized_output_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize) {
-    add_output_port(name, kind.to_verilog_kind(size), idx.to_module_index());
+pub fn add_sized_output_port(
+    name: String,
+    kind: SizedVerilogKind,
+    idx: CModIndex,
+    size: usize,
+    signed: bool,
+) {
+    add_output_port(
+        name,
+        kind.to_verilog_kind(size, signed),
+        idx.to_module_index(),
+    );
 }
 
 impl UnsizedVerilogKind {
     pub fn to_verilog_kind(&self) -> VerilogKind {
         match *self {
-            UnsizedVerilogKind::Byte => VerilogKind::Byte,
-            UnsizedVerilogKind::ShortInteger => VerilogKind::ShortInteger,
-            UnsizedVerilogKind::Integer => VerilogKind::Integer,
-            UnsizedVerilogKind::LongInteger => VerilogKind::LongInteger,
-            UnsizedVerilogKind::Time => VerilogKind::Time,
-            UnsizedVerilogKind::ShortReal => VerilogKind::ShortReal,
-            UnsizedVerilogKind::Real => VerilogKind::Real,
+            UnsizedVerilogKind::Integer => VerilogKind::Variable(VerilogVariableKind::Integer),
+            UnsizedVerilogKind::Real => VerilogKind::Variable(VerilogVariableKind::Real),
+            UnsizedVerilogKind::Time => VerilogKind::Variable(VerilogVariableKind::Time),
             _ => unreachable!(),
         }
     }
     pub fn from_verilog_kind(vk: VerilogKind) -> Self {
         match vk {
-            VerilogKind::Byte => UnsizedVerilogKind::Byte,
-            VerilogKind::ShortInteger => UnsizedVerilogKind::ShortInteger,
-            VerilogKind::Integer => UnsizedVerilogKind::Integer,
-            VerilogKind::LongInteger => UnsizedVerilogKind::LongInteger,
-            VerilogKind::Time => UnsizedVerilogKind::Time,
-            VerilogKind::ShortReal => UnsizedVerilogKind::ShortReal,
-            VerilogKind::Real => UnsizedVerilogKind::Real,
+            VerilogKind::Variable(v) => match v {
+                verilog::VerilogVariableKind::Integer => UnsizedVerilogKind::Integer,
+                verilog::VerilogVariableKind::Real => UnsizedVerilogKind::Real,
+                verilog::VerilogVariableKind::Time => UnsizedVerilogKind::Time,
+                _ => unreachable!(),
+            },
             _ => unreachable!(),
         }
     }
 }
 
 impl SizedVerilogKind {
-    pub fn to_verilog_kind(&self, size: usize) -> VerilogKind {
+    pub fn to_verilog_kind(&self, size: usize, signed: bool) -> VerilogKind {
         match *self {
-            SizedVerilogKind::Bit => VerilogKind::Bit(size),
-            SizedVerilogKind::Logic => VerilogKind::Logic(size),
+            SizedVerilogKind::Wire => VerilogKind::Net {
+                kind: VerilogNetKind::Wire,
+                size,
+                signed,
+            },
+            SizedVerilogKind::WOr => VerilogKind::Net {
+                kind: VerilogNetKind::WOr,
+                size,
+                signed,
+            },
+            SizedVerilogKind::WAnd => VerilogKind::Net {
+                kind: VerilogNetKind::WAnd,
+                size,
+                signed,
+            },
+            SizedVerilogKind::Tri0 => VerilogKind::Net {
+                kind: VerilogNetKind::Tri0,
+                size,
+                signed,
+            },
+            SizedVerilogKind::Tri1 => VerilogKind::Net {
+                kind: VerilogNetKind::Tri1,
+                size,
+                signed,
+            },
+            SizedVerilogKind::Supply0 => VerilogKind::Net {
+                kind: VerilogNetKind::Supply0,
+                size,
+                signed,
+            },
+            SizedVerilogKind::Supply1 => VerilogKind::Net {
+                kind: VerilogNetKind::Supply1,
+                size,
+                signed,
+            },
+            SizedVerilogKind::TriReg => VerilogKind::Net {
+                kind: VerilogNetKind::TriReg,
+                size,
+                signed,
+            },
+            SizedVerilogKind::Reg => {
+                VerilogKind::Variable(VerilogVariableKind::Reg { signed, size })
+            }
             _ => unreachable!(),
         }
     }
     pub fn from_verilog_kind(vk: VerilogKind) -> Self {
         match vk {
-            VerilogKind::Bit(_) => Self::Bit,
-            VerilogKind::Logic(_) => Self::Logic,
-            _ => unreachable!(),
+            VerilogKind::Net { kind, .. } => match kind {
+                verilog::VerilogNetKind::Wire => SizedVerilogKind::Wire,
+                verilog::VerilogNetKind::WOr => SizedVerilogKind::WOr,
+                verilog::VerilogNetKind::WAnd => SizedVerilogKind::WAnd,
+                verilog::VerilogNetKind::Tri0 => SizedVerilogKind::Tri0,
+                verilog::VerilogNetKind::Tri1 => SizedVerilogKind::Tri1,
+                verilog::VerilogNetKind::Supply0 => SizedVerilogKind::Supply0,
+                verilog::VerilogNetKind::Supply1 => SizedVerilogKind::Supply1,
+                verilog::VerilogNetKind::TriReg => SizedVerilogKind::TriReg,
+            },
+            VerilogKind::Variable(kind) => match kind {
+                VerilogVariableKind::Reg { .. } => SizedVerilogKind::Reg,
+                _ => unreachable!(),
+            },
         }
     }
 }
@@ -196,12 +283,18 @@ pub fn dump_netlist() {
 }
 
 pub fn get_graph() -> CGraph {
-    // Grab the netlist
+    // Grab the globls
     let netlist = NETLIST.lock().expect("Lock won't panic");
+    let mut mod_map = MOD_MAP.lock().expect("Lock won't panic");
+    let mut port_map = PORT_MAP.lock().expect("Lock won't panic");
+
+    // Clear all our old drawing state
+    (*mod_map).clear();
+    (*port_map).clear();
+
     // Counter for the ports
     let mut port_id = 0i32;
-    // HashMap for connecting the ports
-    let mut port_map = HashMap::new();
+
     // Grab the modules
     let modules = (*netlist)
         .modules()
@@ -248,8 +341,8 @@ pub fn get_graph() -> CGraph {
         .enumerate()
         .map(|(id, (x, y))| CWire {
             id: id as i32,
-            x: *port_map.get(x).unwrap(),
-            y: *port_map.get(y).unwrap(),
+            x: *(*port_map).get_by_left(x).unwrap(),
+            y: *(*port_map).get_by_left(y).unwrap(),
         })
         .collect();
     CGraph { modules, wires }
