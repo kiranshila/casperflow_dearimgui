@@ -339,6 +339,27 @@ impl Netlist {
         p
     }
 
+    pub fn remove_wire(&mut self, wire_idx: usize) -> Option<()> {
+        let (pi1, pi2) = if wire_idx < self.wires.len() {
+            self.wires.swap_remove(wire_idx)
+        } else {
+            return None;
+        };
+        // Now we also need to find the ports that these connected to and update them
+        let (p1, p2) = self.ports.get2_mut(pi1.0, pi2.0);
+        let p1 = p1?;
+        let p2 = p2?;
+        match p1 {
+            Port::Input { connection, .. } => *connection = None,
+            Port::Output { connections, .. } => connections.retain(|x| *x != pi2),
+        };
+        match p2 {
+            Port::Input { connection, .. } => *connection = None,
+            Port::Output { connections, .. } => connections.retain(|x| *x != pi1),
+        }
+        Some(())
+    }
+
     pub fn get_module(&self, idx: ModuleIndex) -> Option<&Module> {
         self.modules.get(idx.0)
     }

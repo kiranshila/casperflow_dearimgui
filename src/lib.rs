@@ -116,6 +116,7 @@ mod ffi {
         fn get_graph() -> CGraph;
         fn get_type(id: i32) -> String;
         fn delete_module(id: i32);
+        fn delete_wire(id: i32) -> i32;
     }
 }
 
@@ -419,4 +420,14 @@ pub fn delete_module(id: i32) {
     let mod_map = MOD_MAP.lock().expect("Lock won't panic");
     let mi = mod_map.get_by_right(&id).expect("This will always exist");
     netlist.remove_module(*mi);
+}
+
+pub fn delete_wire(id: i32) -> i32 {
+    // The wire id is just the index into the wire vector. No further cleanup is needed.
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    if (*netlist).remove_wire(id as usize).is_some() {
+        0
+    } else {
+        -1
+    }
 }

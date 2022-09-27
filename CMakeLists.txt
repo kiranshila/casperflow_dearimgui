@@ -41,6 +41,7 @@ add_subdirectory("vendor")
 add_executable(${PROJECT_NAME} 
     ${CMAKE_SOURCE_DIR}/src/CasperFlow.cpp
     ${CMAKE_SOURCE_DIR}/src/lowlevel_gui.cpp
+    ${CMAKE_SOURCE_DIR}/src/ui_components.cpp
     ${CMAKE_SOURCE_DIR}/src/bindings/imgui_impl_glfw.cpp
     ${CMAKE_SOURCE_DIR}/src/bindings/imgui_impl_opengl3.cpp
     ${CFRS_BRIDGE_CPP})

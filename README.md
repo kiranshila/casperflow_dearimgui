@@ -5,7 +5,7 @@ CasperFlow is a graphical hardware description language for the CASPER Collabora
 ## Goals
 - Be able to design *relatively simple* gateware in a familiar Simulink-like GUI
 - Track the model netlist in a fully documented netlist file that makes for easy version control
-- Support heiarchial design
+- Support hierarchical design
 - Typesafe on connections, no waiting for Ctrl-D to flood your screen with errors
 - Emit verilog + constraints file for use in either the FOSS F4PGA backends or Vivado
 - Easy importing of foreign verilog (Drag in a .v maybe?)
@@ -21,5 +21,5 @@ CasperFlow is a graphical hardware description language for the CASPER Collabora
 
 ## Structure
 
-All the GUI stuff is written in CPP for now, until the ImGui wrapper matures
+All the GUI stuff is written in CPP for now until the ImGui wrapper matures.
 We're using Conan to grab the CPP deps, and using Corrosion to build and link the rust stuff.
