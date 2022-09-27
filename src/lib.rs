@@ -9,7 +9,7 @@ use bimap::BiMap;
 use ffi::{CGraph, CModIndex, CModule, CPort, CWire, ConnectionResult};
 use generational_arena::Index;
 use lazy_static::lazy_static;
-use std::{collections::HashMap, sync::Mutex};
+use std::sync::Mutex;
 use verilog::{PortIndex, VerilogNetKind, VerilogVariableKind};
 
 lazy_static! {
@@ -19,8 +19,6 @@ lazy_static! {
     pub static ref PORT_MAP: Mutex<BiMap<PortIndex,i32>> = Mutex::new(BiMap::new());
     // Same goes for module id
     pub static ref MOD_MAP: Mutex<BiMap<ModuleIndex,i32>> = Mutex::new(BiMap::new());
-    // We alo need to know, given a port - what module it is in
-    pub static ref PORT_TO_MOD: Mutex<HashMap<PortIndex,ModuleIndex>> = Mutex::new(HashMap::new());
 }
 
 #[cxx::bridge(namespace = "org::cfrs")]
@@ -117,6 +115,7 @@ mod ffi {
         fn connect2(port_a_id: i32, port_b_id: i32) -> ConnectionResult;
         fn get_graph() -> CGraph;
         fn get_type(id: i32) -> String;
+        fn delete_module(id: i32);
     }
 }
 
@@ -291,7 +290,6 @@ pub fn get_graph() -> CGraph {
     let netlist = NETLIST.lock().expect("Lock won't panic");
     let mut mod_map = MOD_MAP.lock().expect("Lock won't panic");
     let mut port_map = PORT_MAP.lock().expect("Lock won't panic");
-    let mut port_to_mod = PORT_TO_MOD.lock().expect("Lock won't panic");
 
     // Clear all our old drawing state
     (*mod_map).clear();
@@ -306,6 +304,7 @@ pub fn get_graph() -> CGraph {
         .enumerate()
         .map(|(id, (mi, m))| {
             let id = id as i32;
+            mod_map.insert(ModuleIndex(mi), id);
             CModule {
                 id,
                 name: m.name.to_owned(),
@@ -320,7 +319,6 @@ pub fn get_graph() -> CGraph {
                         port_id += 1;
                         // Create the lookups
                         port_map.insert(*x, id);
-                        port_to_mod.insert(*x, ModuleIndex(mi));
                         CPort { id, name }
                     })
                     .collect(),
@@ -335,7 +333,6 @@ pub fn get_graph() -> CGraph {
                         port_id += 1;
                         // Create the lookup
                         port_map.insert(*x, id);
-                        port_to_mod.insert(*x, ModuleIndex(mi));
                         CPort { id, name }
                     })
                     .collect(),
@@ -415,4 +412,11 @@ pub fn get_type(id: i32) -> String {
         .expect("This port will always exist");
     // Return the name of the type
     p.kind().to_string()
+}
+
+pub fn delete_module(id: i32) {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let mod_map = MOD_MAP.lock().expect("Lock won't panic");
+    let mi = mod_map.get_by_right(&id).expect("This will always exist");
+    netlist.remove_module(*mi);
 }

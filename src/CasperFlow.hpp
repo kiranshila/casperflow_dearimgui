@@ -8,6 +8,5 @@
 #include "lib.rs.h"
 // Others
 #include "lowlevel_gui.hpp"
-#include "node_style.hpp"
 // stdlib
 #include <iostream>

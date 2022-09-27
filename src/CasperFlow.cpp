@@ -1,4 +1,5 @@
 #include "CasperFlow.hpp"
+#include "imgui.h"
 #include "lib.rs.h"
 
 namespace rs = org::cfrs;
@@ -215,10 +216,16 @@ int main() {
   rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx2, 16,
                             false);
 
+  auto mod_idx3 = rs::add_new_module("Ivy");
+  rs::add_sized_input_port("A", rs::SizedVerilogKind::Reg, mod_idx3, 16, false);
+  rs::add_sized_input_port("B", rs::SizedVerilogKind::Reg, mod_idx3, 16, false);
+  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx3, 16,
+                            false);
+
   // Track to see if the graph is stale
   bool stale = true;
 
-  // Get graph
+  // Graph
   rs::CGraph graph;
 
   // Run the gui!
@@ -261,6 +268,39 @@ int main() {
     if (ws.show_demo)
       ImGui::ShowDemoWindow(&ws.show_demo);
 
+    // Check if we right clicked a node
+    bool open_node_popup =
+        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        ImNodes::IsEditorHovered() && ImGui::IsMouseReleased(1) &&
+        !ImGui::IsMouseDragging(1);
+
+    if (ImNodes::IsLinkHovered(&ws.link)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Link id: %d", ws.link);
+      ImGui::EndTooltip();
+
+      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
+        ImGui::OpenPopup("wire_rc_menu");
+      }
+    }
+
+    if (ImNodes::IsNodeHovered(&ws.node)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Node id: %d", ws.node);
+      ImGui::EndTooltip();
+
+      // If right click on node, open the node context menu
+      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
+        ImGui::OpenPopup("node_rc_menu");
+      }
+    }
+
+    if (ImNodes::IsPinHovered(&ws.pin)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Pin type: %s", rs::get_type(ws.pin).c_str());
+      ImGui::EndTooltip();
+    }
+
     if (ImNodes::IsLinkCreated(&ws.start_attr, &ws.stop_attr)) {
       // Attempt to make the connection. Do something? with the error
       auto result = rs::connect2(ws.start_attr, ws.stop_attr);
@@ -286,22 +326,22 @@ int main() {
       }
     }
 
-    if (ImNodes::IsLinkHovered(&ws.link)) {
-      ImGui::BeginTooltip();
-      ImGui::Text("Link id: %d", ws.link);
-      ImGui::EndTooltip();
+    // Draw the node popup
+    if (ImGui::BeginPopup("node_rc_menu")) {
+      if (ImGui::MenuItem("Delete module")) {
+        std::cout << ws.node << std::endl;
+        rs::delete_module(ws.node);
+        stale = true;
+      }
+      ImGui::EndPopup();
     }
 
-    if (ImNodes::IsNodeHovered(&ws.node)) {
-      ImGui::BeginTooltip();
-      ImGui::Text("Link id: %d", ws.node);
-      ImGui::EndTooltip();
-    }
-
-    if (ImNodes::IsPinHovered(&ws.pin)) {
-      ImGui::BeginTooltip();
-      ImGui::Text("Pin type: %s", rs::get_type(ws.pin).c_str());
-      ImGui::EndTooltip();
+    // Draw the wire popup
+    if (ImGui::BeginPopup("wire_rc_menu")) {
+      if (ImGui::MenuItem("Delete connection")) {
+        // Do something
+      }
+      ImGui::EndPopup();
     }
 
     // Render

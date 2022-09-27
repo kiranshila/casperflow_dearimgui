@@ -290,6 +290,8 @@ impl Netlist {
         for pi in m.outputs.iter() {
             self.ports.remove(pi.0);
         }
+        // Cleanup connections
+        self.cleanup_wires();
         Some(m)
     }
 
@@ -319,7 +321,10 @@ impl Netlist {
         // Grab the specific port index
         let pi = m.inputs.get(port_idx)?;
         // Remove the port
-        self.ports.remove(pi.0)
+        let p = self.ports.remove(pi.0);
+        // Cleanup
+        self.cleanup_wires();
+        p
     }
 
     pub fn remove_output_port(&mut self, mod_idx: ModuleIndex, port_idx: usize) -> Option<Port> {
@@ -328,7 +333,10 @@ impl Netlist {
         // Grab the specific port index
         let pi = m.outputs.get(port_idx)?;
         // Remove the port
-        self.ports.remove(pi.0)
+        let p = self.ports.remove(pi.0);
+        // Cleanup
+        self.cleanup_wires();
+        p
     }
 
     pub fn get_module(&self, idx: ModuleIndex) -> Option<&Module> {
@@ -436,6 +444,12 @@ impl Netlist {
             (*in_port_idx, *out_port_idx)
         };
         self.connect_real_idx(input, output)
+    }
+
+    /// Walk through every wire and remove the ones that refer to pins that don't exist
+    pub fn cleanup_wires(&mut self) {
+        self.wires
+            .retain(|(x, y)| self.ports.get(x.0).is_some() && self.ports.get(y.0).is_some())
     }
 }
 
