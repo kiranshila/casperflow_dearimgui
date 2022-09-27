@@ -63,7 +63,9 @@ void draw_main_menu(bool *editor_open, bool *log_open, bool *browser_open,
                     bool *demo_open) {
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      if (ImGui::MenuItem("Open", "CTRL+o")) {
+      if (ImGui::Button("Open library")) {
+        ImGuiFileDialog::Instance()->OpenDialog("ChooseLibDlgKey",
+                                                "Choose File", ".json", ".");
       }
       ImGui::EndMenu();
     }
@@ -161,4 +163,21 @@ void ApplicationLog::draw(const char *title, bool *p_open = nullptr) {
   }
   ImGui::EndChild();
   ImGui::End();
+}
+
+bool file_selector() {
+  bool stale = false;
+  // display
+  if (ImGuiFileDialog::Instance()->Display("ChooseLibDlgKey")) {
+    // action if OK
+    if (ImGuiFileDialog::Instance()->IsOk()) {
+      std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
+      // action
+      org::cfrs::add_module_from_json_path(path);
+      stale = true;
+    }
+    // close
+    ImGuiFileDialog::Instance()->Close();
+  }
+  return stale;
 }

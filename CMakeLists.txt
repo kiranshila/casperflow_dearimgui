@@ -51,4 +51,4 @@ target_include_directories(
     PRIVATE
     ${CARGO_TARGET_DIR}/cxxbridge/cfrs/src/)
 
-target_link_libraries(${PROJECT_NAME} ${CONAN_LIBS} imnodes ${CFRS_LIB})
+target_link_libraries(${PROJECT_NAME} ${CONAN_LIBS} imnodes imgui_file_dialog ${CFRS_LIB})

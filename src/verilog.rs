@@ -1,8 +1,7 @@
-use std::fmt::Display;
-
-use generational_arena::{Arena, Index};
-
 use crate::ffi::ConnectionResult;
+use generational_arena::{Arena, Index};
+use serde::{Deserialize, Serialize};
+use std::fmt::Display;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleIndex(pub Index);
@@ -10,7 +9,7 @@ pub struct ModuleIndex(pub Index);
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PortIndex(pub Index);
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Serialize, Deserialize)]
 /// These are the verilog types that must be driven. The value channges
 /// when the driver changes value. These identifiers represent wires.
 pub enum VerilogNetKind {
@@ -40,7 +39,7 @@ impl Default for VerilogNetKind {
 
 // TODO: Strength
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Serialize, Deserialize)]
 /// An identifier of "variable data type" means that it changes value upon
 /// assignment and holds its value until another assignment.
 pub enum VerilogVariableKind {
@@ -63,7 +62,7 @@ impl Default for VerilogVariableKind {
     }
 }
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Clone, Copy, Serialize, Deserialize)]
 pub enum VerilogKind {
     Net {
         kind: VerilogNetKind,

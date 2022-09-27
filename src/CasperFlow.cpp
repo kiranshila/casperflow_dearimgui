@@ -1,4 +1,6 @@
 #include "CasperFlow.hpp"
+#include "lib.rs.h"
+#include "ui_components.hpp"
 
 namespace rs = org::cfrs;
 
@@ -11,26 +13,6 @@ int main() {
 
   ApplicationLog log;
   WindowState ws;
-
-  // Create a little netlist
-  auto mod_idx = rs::add_new_module("Logical");
-  rs::add_sized_input_port("A", rs::SizedVerilogKind::Reg, mod_idx, 16, false);
-  rs::add_sized_input_port("B", rs::SizedVerilogKind::Reg, mod_idx, 16, false);
-  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx, 16,
-                            false);
-
-  auto mod_idx2 = rs::add_new_module("Hello");
-  rs::add_sized_input_port("A", rs::SizedVerilogKind::Supply1, mod_idx2, 16,
-                           false);
-  rs::add_sized_input_port("B", rs::SizedVerilogKind::Reg, mod_idx2, 16, false);
-  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx2, 16,
-                            false);
-
-  auto mod_idx3 = rs::add_new_module("Ivy");
-  rs::add_sized_input_port("A", rs::SizedVerilogKind::Reg, mod_idx3, 16, false);
-  rs::add_sized_input_port("B", rs::SizedVerilogKind::Reg, mod_idx3, 16, false);
-  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx3, 16,
-                            false);
 
   // Track to see if the graph is stale
   bool stale = true;
@@ -158,6 +140,9 @@ int main() {
       }
       ImGui::EndPopup();
     }
+
+    // File selector
+    stale = file_selector();
 
     // Render
     gui_render(window);

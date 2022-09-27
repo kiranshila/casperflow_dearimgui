@@ -1,4 +1,5 @@
 //! This module contians the functions that we'll extern out to C, to be interacted with from the GUI code
+pub mod library;
 pub mod verilog;
 
 use crate::{
@@ -9,7 +10,11 @@ use bimap::BiMap;
 use ffi::{CGraph, CModIndex, CModule, CPort, CWire, ConnectionResult};
 use generational_arena::Index;
 use lazy_static::lazy_static;
-use std::sync::Mutex;
+use std::{
+    fs::File,
+    io::{Read, Write},
+    sync::Mutex,
+};
 use verilog::{PortIndex, VerilogNetKind, VerilogVariableKind};
 
 lazy_static! {
@@ -117,6 +122,8 @@ mod ffi {
         fn get_type(id: i32) -> String;
         fn delete_module(id: i32);
         fn delete_wire(id: i32) -> i32;
+        fn dump_module_json_to_path(idx: CModIndex, path: String) -> i32;
+        fn add_module_from_json_path(path: String) -> Result<CModIndex>;
     }
 }
 
@@ -429,5 +436,30 @@ pub fn delete_wire(id: i32) -> i32 {
         0
     } else {
         -1
+    }
+}
+
+pub fn add_module_from_json_path(path: String) -> anyhow::Result<CModIndex> {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let mut file = File::open(path)?;
+    let mut buf = String::new();
+    file.read_to_string(&mut buf)?;
+    let mi = (*netlist).add_library_module_from_json(&buf)?;
+    Ok(CModIndex::from_module_index(mi))
+}
+
+pub fn dump_module_json_to_path(idx: CModIndex, path: String) -> i32 {
+    let netlist = NETLIST.lock().expect("Lock won't panic");
+    let s = match netlist.dump_library_module_to_json(idx.to_module_index()) {
+        Some(s) => s,
+        None => return -1,
+    };
+    let mut file = match File::create(path) {
+        Ok(f) => f,
+        Err(_) => return -2,
+    };
+    match file.write_all(s.as_bytes()) {
+        Ok(_) => 0,
+        Err(_) => -3,
     }
 }

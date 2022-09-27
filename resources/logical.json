@@ -1,0 +1,40 @@
+{
+  "name": "Logical",
+  "inputs": [
+    {
+      "name": "A",
+      "kind": {
+        "Variable": {
+          "Reg": {
+            "signed": false,
+            "size": 16
+          }
+        }
+      }
+    },
+    {
+      "name": "B",
+      "kind": {
+        "Variable": {
+          "Reg": {
+            "signed": false,
+            "size": 16
+          }
+        }
+      }
+    }
+  ],
+  "outputs": [
+    {
+      "name": "Out",
+      "kind": {
+        "Variable": {
+          "Reg": {
+            "signed": false,
+            "size": 16
+          }
+        }
+      }
+    }
+  ]
+}
