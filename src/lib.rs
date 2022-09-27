@@ -94,14 +94,14 @@ mod ffi {
             kind: SizedVerilogKind,
             idx: CModIndex,
             size: usize,
-            signed: bool,
+            is_signed: bool,
         );
         fn add_sized_output_port(
             name: String,
             kind: SizedVerilogKind,
             idx: CModIndex,
             size: usize,
-            signed: bool,
+            is_signed: bool,
         );
         fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
         fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
@@ -158,11 +158,11 @@ pub fn add_sized_input_port(
     kind: SizedVerilogKind,
     idx: CModIndex,
     size: usize,
-    signed: bool,
+    is_signed: bool,
 ) {
     add_input_port(
         name,
-        kind.to_verilog_kind(size, signed),
+        kind.to_verilog_kind(size, is_signed),
         idx.to_module_index(),
     );
 }
@@ -176,11 +176,11 @@ pub fn add_sized_output_port(
     kind: SizedVerilogKind,
     idx: CModIndex,
     size: usize,
-    signed: bool,
+    is_signed: bool,
 ) {
     add_output_port(
         name,
-        kind.to_verilog_kind(size, signed),
+        kind.to_verilog_kind(size, is_signed),
         idx.to_module_index(),
     );
 }

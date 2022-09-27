@@ -139,8 +139,7 @@ impl Display for VerilogKind {
                 }
                 VerilogVariableKind::Time => todo!(),
             },
-        };
-        Ok(())
+        }
     }
 }
 

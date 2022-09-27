@@ -1,6 +1,4 @@
 #include "CasperFlow.hpp"
-#include "imgui.h"
-#include "imnodes.h"
 
 namespace rs = org::cfrs;
 
@@ -34,7 +32,6 @@ void cf_editor(bool *p_open, rs::CGraph &graph) {
   }
 
   for (auto wire : graph.wires) {
-    std::cout << wire.id << std::endl;
     ImNodes::Link(wire.id, wire.x, wire.y);
   }
 
@@ -205,14 +202,16 @@ int main() {
 
   // Create a little netlist
   auto mod_idx = rs::add_new_module("Logical");
-  rs::add_sized_input_port("A", rs::SizedVerilogKind::Bit, mod_idx, 16);
-  rs::add_sized_input_port("B", rs::SizedVerilogKind::Bit, mod_idx, 16);
-  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Bit, mod_idx, 16);
+  rs::add_sized_input_port("A", rs::SizedVerilogKind::Reg, mod_idx, 16, false);
+  rs::add_sized_input_port("B", rs::SizedVerilogKind::Reg, mod_idx, 16, false);
+  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx, 16,
+                            false);
 
   auto mod_idx2 = rs::add_new_module("Hello");
-  rs::add_sized_input_port("A", rs::SizedVerilogKind::Bit, mod_idx2, 16);
-  rs::add_sized_input_port("B", rs::SizedVerilogKind::Bit, mod_idx2, 16);
-  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Bit, mod_idx2, 16);
+  rs::add_sized_input_port("A", rs::SizedVerilogKind::Reg, mod_idx2, 16, false);
+  rs::add_sized_input_port("B", rs::SizedVerilogKind::Reg, mod_idx2, 16, false);
+  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx2, 16,
+                            false);
 
   rs::connect(mod_idx, 0, mod_idx2, 0);
   rs::connect(mod_idx, 0, mod_idx2, 1);
