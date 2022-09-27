@@ -113,6 +113,7 @@ mod ffi {
             input_port: usize,
         ) -> ConnectionResult;
         fn get_graph() -> CGraph;
+        fn get_type(id: i32) -> String;
     }
 }
 
@@ -365,4 +366,19 @@ pub fn connect(
         Ok(_) => ConnectionResult::ConnectionOk,
         Err(e) => e,
     }
+}
+
+pub fn get_type(id: i32) -> String {
+    // Lookup the pin index from the bimap
+    let port_map = PORT_MAP.lock().expect("Lock won't panic");
+    let netlist = NETLIST.lock().expect("Lock won't panic");
+    let pi = (*port_map)
+        .get_by_right(&id)
+        .expect("We'll only use ids from the ones we just constructed");
+    // Get the port from the index
+    let p = (*netlist)
+        .get_port(*pi)
+        .expect("This port will always exist");
+    // Return the name of the type
+    p.kind().to_string()
 }

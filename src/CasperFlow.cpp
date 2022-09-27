@@ -1,4 +1,5 @@
 #include "CasperFlow.hpp"
+#include "lib.rs.h"
 
 namespace rs = org::cfrs;
 
@@ -267,13 +268,13 @@ int main() {
 
     if (ImNodes::IsNodeHovered(&ws.node)) {
       ImGui::BeginTooltip();
-      ImGui::Text("Node id: %d", ws.node);
+      ImGui::Text("Link id: %d", ws.node);
       ImGui::EndTooltip();
     }
 
     if (ImNodes::IsPinHovered(&ws.pin)) {
       ImGui::BeginTooltip();
-      ImGui::Text("Pin id: %d", ws.pin);
+      ImGui::Text("Pin type: %s", rs::get_type(ws.pin).c_str());
       ImGui::EndTooltip();
     }
 
