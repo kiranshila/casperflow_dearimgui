@@ -209,7 +209,8 @@ int main() {
                             false);
 
   auto mod_idx2 = rs::add_new_module("Hello");
-  rs::add_sized_input_port("A", rs::SizedVerilogKind::Reg, mod_idx2, 16, false);
+  rs::add_sized_input_port("A", rs::SizedVerilogKind::Supply1, mod_idx2, 16,
+                           false);
   rs::add_sized_input_port("B", rs::SizedVerilogKind::Reg, mod_idx2, 16, false);
   rs::add_sized_output_port("Out", rs::SizedVerilogKind::Reg, mod_idx2, 16,
                             false);
@@ -265,9 +266,20 @@ int main() {
       auto result = rs::connect2(ws.start_attr, ws.stop_attr);
       switch (result) {
       case org::cfrs::ConnectionResult::BadIndex:
+        log.add_log("We somehow got a bad pin or module index, this shouldn't "
+                    "happen\n");
+        break;
       case org::cfrs::ConnectionResult::DirectionMismatch:
+        log.add_log("Inputs must be connected to outputs\n");
+        break;
       case org::cfrs::ConnectionResult::TypeMismatch:
+        log.add_log("The port types disagree, check the port types on either "
+                    "side of the connection\n");
+        break;
       case org::cfrs::ConnectionResult::InputDriven:
+        log.add_log(
+            "Input is already driven, delete the existing connection\n");
+        break;
       case org::cfrs::ConnectionResult::ConnectionOk:
         stale = true;
         break;
