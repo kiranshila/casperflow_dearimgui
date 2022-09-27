@@ -5,10 +5,10 @@ use crate::{
     ffi::{SizedVerilogKind, UnsizedVerilogKind},
     verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind},
 };
-use ffi::CModIndex;
+use ffi::{CGraph, CModIndex, CModule, CPort, CWire, ConnectionResult};
 use generational_arena::Index;
 use lazy_static::lazy_static;
-use std::sync::Mutex;
+use std::{collections::HashMap, sync::Mutex};
 use verilog::PortIndex;
 
 lazy_static! {
@@ -42,15 +42,57 @@ mod ffi {
         generation: u64,
     }
 
+    #[derive(Debug)]
+    pub struct CPort {
+        id: i32,
+        name: String,
+    }
+
+    #[derive(Debug)]
+    pub struct CModule {
+        id: i32,
+        name: String,
+        inputs: Vec<CPort>,
+        outputs: Vec<CPort>,
+    }
+
+    #[derive(Debug)]
+    pub struct CWire {
+        id: i32,
+        x: i32,
+        y: i32,
+    }
+
+    #[derive(Debug)]
+    pub struct CGraph {
+        modules: Vec<CModule>,
+        wires: Vec<CWire>,
+    }
+
+    #[derive(Debug)]
+    pub enum ConnectionResult {
+        BadIndex,
+        DirectionMismatch,
+        TypeMismatch,
+        InputDriven,
+        ConnectionOk,
+    }
+
     // Rust types and signatures exposed to C++.
     extern "Rust" {
-        type ModuleIndex;
         fn add_new_module(name: String) -> CModIndex;
         fn add_sized_input_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize);
         fn add_sized_output_port(name: String, kind: SizedVerilogKind, idx: CModIndex, size: usize);
         fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
         fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
         fn dump_netlist();
+        fn connect(
+            output_mod: CModIndex,
+            output_port: usize,
+            input_mod: CModIndex,
+            input_port: usize,
+        ) -> ConnectionResult;
+        fn get_graph() -> CGraph;
     }
 }
 
@@ -78,8 +120,6 @@ pub fn add_port(port: Port, idx: ModuleIndex) -> Option<PortIndex> {
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
     netlist.add_port(port, idx)
 }
-
-// C++ interface
 
 pub fn add_input_port(name: String, kind: VerilogKind, idx: ModuleIndex) -> Option<PortIndex> {
     add_port(Port::input(name, kind), idx)
@@ -153,4 +193,83 @@ impl SizedVerilogKind {
 pub fn dump_netlist() {
     let netlist = NETLIST.lock().expect("Lock won't panic");
     println!("{:#?}", &*netlist);
+}
+
+pub fn get_graph() -> CGraph {
+    // Grab the netlist
+    let netlist = NETLIST.lock().expect("Lock won't panic");
+    // Counter for the ports
+    let mut port_id = 0i32;
+    // HashMap for connecting the ports
+    let mut port_map = HashMap::new();
+    // Grab the modules
+    let modules = (*netlist)
+        .modules()
+        .enumerate()
+        .map(|(id, (_, m))| {
+            let id = id as i32;
+            CModule {
+                id,
+                name: m.name.to_owned(),
+                inputs: m
+                    .inputs
+                    .iter()
+                    .map(|x| {
+                        let port = netlist.get_port(*x).expect("These will always be valid");
+                        let id = port_id;
+                        let name = port.name().to_owned();
+                        // Increment the global id counter
+                        port_id += 1;
+                        // Create the lookup
+                        port_map.insert(*x, id);
+                        CPort { id, name }
+                    })
+                    .collect(),
+                outputs: m
+                    .outputs
+                    .iter()
+                    .map(|x| {
+                        let port = netlist.get_port(*x).expect("These will always be valid");
+                        let id = port_id;
+                        let name = port.name().to_owned();
+                        // Increment the global id counter
+                        port_id += 1;
+                        // Create the lookup
+                        port_map.insert(*x, id);
+                        CPort { id, name }
+                    })
+                    .collect(),
+            }
+        })
+        .collect();
+    // Grab the ports
+    let wires = (*netlist)
+        .wires()
+        .enumerate()
+        .map(|(id, (x, y))| CWire {
+            id: id as i32,
+            x: *port_map.get(x).unwrap(),
+            y: *port_map.get(y).unwrap(),
+        })
+        .collect();
+    CGraph { modules, wires }
+}
+
+pub fn connect(
+    output_mod: CModIndex,
+    output_port: usize,
+    input_mod: CModIndex,
+    input_port: usize,
+) -> ConnectionResult {
+    // Grab the netlist
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    match netlist.connect(
+        output_mod.to_module_index(),
+        output_port,
+        input_mod.to_module_index(),
+        input_port,
+    ) {
+        Ok(_) => ConnectionResult::ConnectionOk,
+        Err(e) => e,
+    }
 }

@@ -1,5 +1,7 @@
 use generational_arena::{Arena, Index};
 
+use crate::ffi::ConnectionResult;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleIndex(pub Index);
 
@@ -144,15 +146,6 @@ pub struct Netlist {
     wires: Vec<(PortIndex, PortIndex)>,
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub enum ConnectionError {
-    BadIndex,
-    DirectionMismatch,
-    TypeMismatch,
-    InputDriven,
-}
-
 impl Netlist {
     pub fn new() -> Self {
         Self {
@@ -177,6 +170,14 @@ impl Netlist {
             self.ports.remove(pi.0);
         }
         Some(m)
+    }
+
+    pub fn modules(&self) -> generational_arena::Iter<Module> {
+        self.modules.iter()
+    }
+
+    pub fn wires(&self) -> std::slice::Iter<(PortIndex, PortIndex)> {
+        self.wires.iter()
     }
 
     pub fn add_port(&mut self, port: Port, idx: ModuleIndex) -> Option<PortIndex> {
@@ -217,16 +218,20 @@ impl Netlist {
         self.modules.get_mut(idx.0)
     }
 
+    pub fn get_port(&self, idx: PortIndex) -> Option<&Port> {
+        self.ports.get(idx.0)
+    }
+
     pub fn connect(
         &mut self,
         output_mod: ModuleIndex,
         output_port: usize,
         input_mod: ModuleIndex,
         input_port: usize,
-    ) -> Result<usize, ConnectionError> {
+    ) -> Result<usize, ConnectionResult> {
         // Check that input and output are different
         if input_mod == output_mod {
-            return Err(ConnectionError::BadIndex);
+            return Err(ConnectionResult::BadIndex);
         }
         // Get the modules
         let (in_mod, out_mod) = self.modules.get2_mut(input_mod.0, output_mod.0);
@@ -237,12 +242,12 @@ impl Netlist {
 
         let in_port_idx = match in_port_idx {
             Some(pi) => pi,
-            None => return Err(ConnectionError::BadIndex),
+            None => return Err(ConnectionResult::BadIndex),
         };
 
         let out_port_idx = match out_port_idx {
             Some(pi) => pi,
-            None => return Err(ConnectionError::BadIndex),
+            None => return Err(ConnectionResult::BadIndex),
         };
 
         // Grab the ports
@@ -251,18 +256,18 @@ impl Netlist {
         // Check directions and existance
         let in_port = match in_port {
             Some(port) if matches!(port, Port::Input { .. }) => port,
-            Some(_) => return Err(ConnectionError::DirectionMismatch),
-            None => return Err(ConnectionError::BadIndex),
+            Some(_) => return Err(ConnectionResult::DirectionMismatch),
+            None => return Err(ConnectionResult::BadIndex),
         };
         let out_port = match out_port {
             Some(port) if matches!(port, Port::Output { .. }) => port,
-            Some(_) => return Err(ConnectionError::DirectionMismatch),
-            None => return Err(ConnectionError::BadIndex),
+            Some(_) => return Err(ConnectionResult::DirectionMismatch),
+            None => return Err(ConnectionResult::BadIndex),
         };
 
         // Check to make sure the types match
         if in_port.kind() != out_port.kind() {
-            return Err(ConnectionError::TypeMismatch);
+            return Err(ConnectionResult::TypeMismatch);
         }
 
         // Check to verify inputs have only one connection
@@ -273,7 +278,7 @@ impl Netlist {
                 ..
             }
         ) {
-            return Err(ConnectionError::InputDriven);
+            return Err(ConnectionResult::InputDriven);
         }
 
         // Drive the input

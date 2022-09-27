@@ -1,24 +1,42 @@
 #include "CasperFlow.hpp"
+#include "imgui.h"
+#include "imnodes.h"
 
-static int current_id = 0;
+namespace rs = org::cfrs;
 
-void cf_editor(bool *p_open) {
+void cf_editor(bool *p_open, rs::CGraph &graph) {
   ImGui::Begin("Editor", p_open);
   ImNodes::BeginNodeEditor();
 
-  if (ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-      ImNodes::IsEditorHovered() && ImGui::IsKeyReleased(GLFW_KEY_A)) {
-    const int node_id = ++current_id;
-    ImNodes::SetNodeScreenSpacePos(node_id, ImGui::GetMousePos());
-    ImNodes::SnapNodeToGrid(node_id);
+  // Draw nodes and wires
+  for (auto mod : graph.modules) {
+    ImNodes::BeginNode(mod.id);
+
+    // Title
+    ImNodes::BeginNodeTitleBar();
+    ImGui::TextUnformatted(mod.name.c_str());
+    ImNodes::EndNodeTitleBar();
+
+    // Inputs
+    for (auto in_port : mod.inputs) {
+      ImNodes::BeginInputAttribute(in_port.id);
+      ImGui::TextUnformatted(in_port.name.c_str());
+      ImNodes::EndInputAttribute();
+    }
+
+    // Outputs
+    for (auto out_port : mod.outputs) {
+      ImNodes::BeginOutputAttribute(out_port.id);
+      ImGui::TextUnformatted(out_port.name.c_str());
+      ImNodes::EndOutputAttribute();
+    }
+    ImNodes::EndNode();
   }
 
-  // Draw nodes and wires
-  ImNodes::BeginNode(current_id);
-  ImNodes::BeginNodeTitleBar();
-  ImGui::TextUnformatted("node");
-  ImNodes::EndNodeTitleBar();
-  ImNodes::EndNode();
+  for (auto wire : graph.wires) {
+    std::cout << wire.id << std::endl;
+    ImNodes::Link(wire.id, wire.x, wire.y);
+  }
 
   ImNodes::MiniMap(0.1f, ImNodesMiniMapLocation_BottomRight);
   ImNodes::EndNodeEditor();
@@ -130,15 +148,25 @@ struct ApplicationLog {
 };
 
 struct WindowState {
+  // UI elements we can view
   bool show_editor;
   bool show_log;
   bool show_browser;
   bool show_demo;
+  // Updated when processing new link events
+  int start_attr;
+  int stop_attr;
+  // More link state
+  int link;
+  int node;
+  int pin;
   WindowState() {
     show_editor = true;
     show_log = true;
     show_browser = true;
     show_demo = false;
+    start_attr = 0;
+    stop_attr = 0;
   }
 };
 
@@ -165,8 +193,6 @@ static void cf_main_menu(WindowState *ws) {
   }
 }
 
-namespace rs = org::cfrs;
-
 int main() {
 
   GLFWwindow *window = gui_init();
@@ -177,11 +203,22 @@ int main() {
   ApplicationLog log;
   WindowState ws;
 
-  // Add a node to the rust netlist
+  // Create a little netlist
   auto mod_idx = rs::add_new_module("Logical");
   rs::add_sized_input_port("A", rs::SizedVerilogKind::Bit, mod_idx, 16);
   rs::add_sized_input_port("B", rs::SizedVerilogKind::Bit, mod_idx, 16);
-  rs::dump_netlist();
+  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Bit, mod_idx, 16);
+
+  auto mod_idx2 = rs::add_new_module("Hello");
+  rs::add_sized_input_port("A", rs::SizedVerilogKind::Bit, mod_idx2, 16);
+  rs::add_sized_input_port("B", rs::SizedVerilogKind::Bit, mod_idx2, 16);
+  rs::add_sized_output_port("Out", rs::SizedVerilogKind::Bit, mod_idx2, 16);
+
+  rs::connect(mod_idx, 0, mod_idx2, 0);
+  rs::connect(mod_idx, 0, mod_idx2, 1);
+
+  // Get graph
+  rs::CGraph graph = rs::get_graph();
 
   // Run the gui!
   while (!glfwWindowShouldClose(window)) {
@@ -210,13 +247,36 @@ int main() {
 
     // Run the layout
     if (ws.show_editor)
-      cf_editor(&ws.show_editor);
+      cf_editor(&ws.show_editor, graph);
     if (ws.show_browser)
       cf_library(&ws.show_browser);
     if (ws.show_log)
       log.draw("Log", &ws.show_log);
     if (ws.show_demo)
       ImGui::ShowDemoWindow(&ws.show_demo);
+
+    if (ImNodes::IsLinkCreated(&ws.start_attr, &ws.stop_attr)) {
+      std::cout << "Try connect " << ws.start_attr << " " << ws.stop_attr
+                << std::endl;
+    }
+
+    if (ImNodes::IsLinkHovered(&ws.link)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Link id: %d", ws.link);
+      ImGui::EndTooltip();
+    }
+
+    if (ImNodes::IsNodeHovered(&ws.node)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Node id: %d", ws.node);
+      ImGui::EndTooltip();
+    }
+
+    if (ImNodes::IsPinHovered(&ws.pin)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Pin id: %d", ws.pin);
+      ImGui::EndTooltip();
+    }
 
     // Render
     gui_render(window);
