@@ -1,58 +1,36 @@
 //! This module contians the functions that we'll extern out to C, to be interacted with from the GUI code
 pub mod library;
-pub mod verilog;
+pub mod netlist;
 
-use crate::{
-    ffi::{SizedVerilogKind, UnsizedVerilogKind},
-    verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind},
-};
+use crate::netlist::{ModuleIndex, Netlist, PinIndex, WireIndex};
+use anyhow::anyhow;
 use bimap::BiMap;
-use ffi::{CGraph, CModIndex, CModule, CPort, CWire, ConnectionResult};
-use generational_arena::Index;
+use ffi::{CGraph, CModule, CPort, CWire, InterconnectDirection, PinKind};
 use lazy_static::lazy_static;
-use std::{
-    fs::File,
-    io::{Read, Write},
-    sync::Mutex,
-};
-use verilog::{PortIndex, VerilogNetKind, VerilogVariableKind};
+use std::{fs::File, io::Read, sync::Mutex};
 
 lazy_static! {
     /// Global netlist that we'll refer to
     pub static ref NETLIST: Mutex<Netlist> = Mutex::new(Netlist::new());
-    /// Wires ids are just their index in the netlist, but pins are computed during drawing, we'll use a hashmap to keep track
-    pub static ref PORT_MAP: Mutex<BiMap<PortIndex,i32>> = Mutex::new(BiMap::new());
-    // Same goes for module id
+    pub static ref PIN_MAP: Mutex<BiMap<PinIndex,i32>> = Mutex::new(BiMap::new());
     pub static ref MOD_MAP: Mutex<BiMap<ModuleIndex,i32>> = Mutex::new(BiMap::new());
+    pub static ref WIRE_MAP: Mutex<BiMap<WireIndex,i32>> = Mutex::new(BiMap::new());
 }
 
 #[cxx::bridge(namespace = "org::cfrs")]
 mod ffi {
-    // Shared types
-    #[derive(Debug)]
-    pub enum UnsizedVerilogKind {
+
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum InterconnectDirection {
+        Input,
+        Output,
+    }
+
+    #[derive(Debug, Copy, Clone, PartialEq, Eq, Serialize, Deserialize)]
+    pub enum PinKind {
+        Wire,
         Integer,
         Real,
-        Time,
-    }
-
-    #[derive(Debug)]
-    pub enum SizedVerilogKind {
-        Wire,
-        WOr,
-        WAnd,
-        Tri0,
-        Tri1,
-        Supply0,
-        Supply1,
-        TriReg,
-        Reg,
-    }
-
-    #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
-    pub struct CModIndex {
-        index: usize,
-        generation: u64,
     }
 
     #[derive(Debug)]
@@ -82,208 +60,110 @@ mod ffi {
         wires: Vec<CWire>,
     }
 
-    #[derive(Debug)]
-    pub enum ConnectionResult {
-        BadIndex,
-        DirectionMismatch,
-        TypeMismatch,
-        InputDriven,
-        ConnectionOk,
-    }
-
     // Rust types and signatures exposed to C++.
     extern "Rust" {
-        fn add_new_module(name: String) -> CModIndex;
-        fn add_sized_input_port(
+        fn add_module(name: String);
+        fn remove_module(mod_id: i32) -> i32;
+        fn add_pin(
+            mod_id: i32,
             name: String,
-            kind: SizedVerilogKind,
-            idx: CModIndex,
-            size: usize,
-            is_signed: bool,
-        );
-        fn add_sized_output_port(
-            name: String,
-            kind: SizedVerilogKind,
-            idx: CModIndex,
-            size: usize,
-            is_signed: bool,
-        );
-        fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
-        fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex);
-        fn dump_netlist();
-        fn connect(
-            output_mod: CModIndex,
-            output_port: usize,
-            input_mod: CModIndex,
-            input_port: usize,
-        ) -> ConnectionResult;
-        fn connect2(port_a_id: i32, port_b_id: i32) -> ConnectionResult;
+            kind: PinKind,
+            direction: InterconnectDirection,
+        ) -> i32;
+        fn remove_pin(pin_id: i32) -> i32;
+        fn add_wire(in_a_id: i32, in_b_id: i32) -> Result<()>;
+        fn remove_wire(wire_id: i32) -> i32;
+
         fn get_graph() -> CGraph;
-        fn get_type(id: i32) -> String;
-        fn delete_module(id: i32);
-        fn delete_wire(id: i32) -> i32;
-        fn dump_module_json_to_path(idx: CModIndex, path: String) -> i32;
-        fn add_module_from_json_path(path: String) -> Result<CModIndex>;
+        fn dump_netlist();
+
+        fn add_module_from_json_path(path: String) -> Result<()>;
+        fn get_json_module(mod_id: i32) -> String;
     }
 }
 
-impl CModIndex {
-    pub fn to_module_index(&self) -> ModuleIndex {
-        ModuleIndex(Index::from_raw_parts(self.index, self.generation))
-    }
-    pub fn from_module_index(idx: ModuleIndex) -> Self {
-        let (index, generation) = idx.0.into_raw_parts();
-        Self { index, generation }
-    }
-}
-
-/// Add a new module with `name` to the global netlist
-pub fn add_new_module(name: String) -> CModIndex {
-    // Create the module instance
-    let new_mod = Module::new(name);
-    // Add the module to the netlist
+pub fn add_module(name: String) {
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    CModIndex::from_module_index((*netlist).add_module(new_mod))
+    netlist.add_module(name);
 }
 
-/// Wraps netlist.add_port with the global netlist
-pub fn add_port(port: Port, idx: ModuleIndex) -> Option<PortIndex> {
+pub fn remove_module(mod_id: i32) -> i32 {
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    netlist.add_port(port, idx)
-}
-
-pub fn add_input_port(name: String, kind: VerilogKind, idx: ModuleIndex) -> Option<PortIndex> {
-    add_port(Port::input(name, kind), idx)
-}
-
-pub fn add_output_port(name: String, kind: VerilogKind, idx: ModuleIndex) -> Option<PortIndex> {
-    add_port(Port::output(name, kind), idx)
-}
-
-pub fn add_unsized_input_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex) {
-    add_input_port(name, kind.to_verilog_kind(), idx.to_module_index());
-}
-
-pub fn add_sized_input_port(
-    name: String,
-    kind: SizedVerilogKind,
-    idx: CModIndex,
-    size: usize,
-    is_signed: bool,
-) {
-    add_input_port(
-        name,
-        kind.to_verilog_kind(size, is_signed),
-        idx.to_module_index(),
-    );
-}
-
-pub fn add_unsized_output_port(name: String, kind: UnsizedVerilogKind, idx: CModIndex) {
-    add_output_port(name, kind.to_verilog_kind(), idx.to_module_index());
-}
-
-pub fn add_sized_output_port(
-    name: String,
-    kind: SizedVerilogKind,
-    idx: CModIndex,
-    size: usize,
-    is_signed: bool,
-) {
-    add_output_port(
-        name,
-        kind.to_verilog_kind(size, is_signed),
-        idx.to_module_index(),
-    );
-}
-
-impl UnsizedVerilogKind {
-    pub fn to_verilog_kind(&self) -> VerilogKind {
-        match *self {
-            UnsizedVerilogKind::Integer => VerilogKind::Variable(VerilogVariableKind::Integer),
-            UnsizedVerilogKind::Real => VerilogKind::Variable(VerilogVariableKind::Real),
-            UnsizedVerilogKind::Time => VerilogKind::Variable(VerilogVariableKind::Time),
-            _ => unreachable!(),
-        }
-    }
-    pub fn from_verilog_kind(vk: VerilogKind) -> Self {
-        match vk {
-            VerilogKind::Variable(v) => match v {
-                verilog::VerilogVariableKind::Integer => UnsizedVerilogKind::Integer,
-                verilog::VerilogVariableKind::Real => UnsizedVerilogKind::Real,
-                verilog::VerilogVariableKind::Time => UnsizedVerilogKind::Time,
-                _ => unreachable!(),
-            },
-            _ => unreachable!(),
-        }
+    let mod_map = MOD_MAP.lock().expect("Lock won't panic");
+    // Get mod index from id
+    let m = if let Some(m) = mod_map.get_by_right(&mod_id) {
+        m
+    } else {
+        return -1;
+    };
+    if netlist.remove_module(*m).is_none() {
+        -1
+    } else {
+        0
     }
 }
 
-impl SizedVerilogKind {
-    pub fn to_verilog_kind(&self, size: usize, signed: bool) -> VerilogKind {
-        match *self {
-            SizedVerilogKind::Wire => VerilogKind::Net {
-                kind: VerilogNetKind::Wire,
-                size,
-                signed,
-            },
-            SizedVerilogKind::WOr => VerilogKind::Net {
-                kind: VerilogNetKind::WOr,
-                size,
-                signed,
-            },
-            SizedVerilogKind::WAnd => VerilogKind::Net {
-                kind: VerilogNetKind::WAnd,
-                size,
-                signed,
-            },
-            SizedVerilogKind::Tri0 => VerilogKind::Net {
-                kind: VerilogNetKind::Tri0,
-                size,
-                signed,
-            },
-            SizedVerilogKind::Tri1 => VerilogKind::Net {
-                kind: VerilogNetKind::Tri1,
-                size,
-                signed,
-            },
-            SizedVerilogKind::Supply0 => VerilogKind::Net {
-                kind: VerilogNetKind::Supply0,
-                size,
-                signed,
-            },
-            SizedVerilogKind::Supply1 => VerilogKind::Net {
-                kind: VerilogNetKind::Supply1,
-                size,
-                signed,
-            },
-            SizedVerilogKind::TriReg => VerilogKind::Net {
-                kind: VerilogNetKind::TriReg,
-                size,
-                signed,
-            },
-            SizedVerilogKind::Reg => {
-                VerilogKind::Variable(VerilogVariableKind::Reg { signed, size })
-            }
-            _ => unreachable!(),
-        }
+pub fn add_pin(mod_id: i32, name: String, kind: PinKind, direction: InterconnectDirection) -> i32 {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let mod_map = MOD_MAP.lock().expect("Lock won't panic");
+    // Get mod index from id
+    let m = if let Some(m) = mod_map.get_by_right(&mod_id) {
+        m
+    } else {
+        return -1;
+    };
+    if netlist.add_pin(*m, name, kind, direction).is_none() {
+        -1
+    } else {
+        0
     }
-    pub fn from_verilog_kind(vk: VerilogKind) -> Self {
-        match vk {
-            VerilogKind::Net { kind, .. } => match kind {
-                verilog::VerilogNetKind::Wire => SizedVerilogKind::Wire,
-                verilog::VerilogNetKind::WOr => SizedVerilogKind::WOr,
-                verilog::VerilogNetKind::WAnd => SizedVerilogKind::WAnd,
-                verilog::VerilogNetKind::Tri0 => SizedVerilogKind::Tri0,
-                verilog::VerilogNetKind::Tri1 => SizedVerilogKind::Tri1,
-                verilog::VerilogNetKind::Supply0 => SizedVerilogKind::Supply0,
-                verilog::VerilogNetKind::Supply1 => SizedVerilogKind::Supply1,
-                verilog::VerilogNetKind::TriReg => SizedVerilogKind::TriReg,
-            },
-            VerilogKind::Variable(kind) => match kind {
-                VerilogVariableKind::Reg { .. } => SizedVerilogKind::Reg,
-                _ => unreachable!(),
-            },
-        }
+}
+
+pub fn remove_pin(pin_id: i32) -> i32 {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let pin_map = PIN_MAP.lock().expect("Lock won't panic");
+    // Get pin index from id
+    let m = if let Some(m) = pin_map.get_by_right(&pin_id) {
+        m
+    } else {
+        return -1;
+    };
+    if netlist.remove_pin(*m).is_none() {
+        -1
+    } else {
+        0
+    }
+}
+
+fn add_wire(in_a_id: i32, in_b_id: i32) -> anyhow::Result<()> {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let pin_map = PIN_MAP.lock().expect("Lock won't panic");
+    // Get pin indices from ids
+    let a_idx = pin_map
+        .get_by_right(&in_a_id)
+        .ok_or(anyhow!("Pin a not found"))?;
+    let b_idx = pin_map
+        .get_by_right(&in_b_id)
+        .ok_or(anyhow!("Pin b not found"))?;
+    // Try to connect
+    netlist.add_wire(*a_idx, *b_idx)?;
+    Ok(())
+}
+
+pub fn remove_wire(wire_id: i32) -> i32 {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let wire_map = WIRE_MAP.lock().expect("Lock won't panic");
+    // Get wire index
+    let idx = if let Some(w) = wire_map.get_by_right(&wire_id) {
+        w
+    } else {
+        return -1;
+    };
+    // Try to remove
+    if netlist.remove_wire(*idx).is_none() {
+        -1
+    } else {
+        0
     }
 }
 
@@ -297,17 +177,19 @@ pub fn get_graph() -> CGraph {
     // Grab the globls
     let netlist = NETLIST.lock().expect("Lock won't panic");
     let mut mod_map = MOD_MAP.lock().expect("Lock won't panic");
-    let mut port_map = PORT_MAP.lock().expect("Lock won't panic");
+    let mut wire_map = WIRE_MAP.lock().expect("Lock won't panic");
+    let mut pin_map = PIN_MAP.lock().expect("Lock won't panic");
 
     // Clear all our old drawing state
     (*mod_map).clear();
-    (*port_map).clear();
+    (*pin_map).clear();
+    (*wire_map).clear();
 
     // Counter for the ports
-    let mut port_id = 0i32;
+    let mut pin_id = 0i32;
 
     // Grab the modules
-    let modules = (*netlist)
+    let modules = netlist
         .modules()
         .enumerate()
         .map(|(id, (mi, m))| {
@@ -315,151 +197,70 @@ pub fn get_graph() -> CGraph {
             mod_map.insert(ModuleIndex(mi), id);
             CModule {
                 id,
-                name: m.name.to_owned(),
+                name: m.name().to_owned(),
                 inputs: m
-                    .inputs
-                    .iter()
+                    .inputs()
                     .map(|x| {
-                        let port = netlist.get_port(*x).expect("These will always be valid");
-                        let id = port_id;
-                        let name = port.name().to_owned();
+                        let pin = netlist.get_pin(*x).expect("These will always be valid");
+                        let id = pin_id;
+                        let name = pin.name().to_owned();
                         // Increment the global id counter
-                        port_id += 1;
+                        pin_id += 1;
                         // Create the lookups
-                        port_map.insert(*x, id);
+                        pin_map.insert(*x, id);
                         CPort { id, name }
                     })
                     .collect(),
                 outputs: m
-                    .outputs
-                    .iter()
+                    .outputs()
                     .map(|x| {
-                        let port = netlist.get_port(*x).expect("These will always be valid");
-                        let id = port_id;
-                        let name = port.name().to_owned();
+                        let pin = netlist.get_pin(*x).expect("These will always be valid");
+                        let id = pin_id;
+                        let name = pin.name().to_owned();
                         // Increment the global id counter
-                        port_id += 1;
+                        pin_id += 1;
                         // Create the lookup
-                        port_map.insert(*x, id);
+                        pin_map.insert(*x, id);
                         CPort { id, name }
                     })
                     .collect(),
             }
         })
         .collect();
-    // Grab the ports
-    let wires = (*netlist)
+    let wires = netlist
         .wires()
         .enumerate()
-        .map(|(id, (x, y))| CWire {
-            id: id as i32,
-            x: *(*port_map).get_by_left(x).unwrap(),
-            y: *(*port_map).get_by_left(y).unwrap(),
+        .map(|(id, (idx, (x, y)))| {
+            wire_map.insert(WireIndex(idx), id as i32);
+            CWire {
+                id: id as i32,
+                x: *(*pin_map).get_by_left(x).unwrap(),
+                y: *(*pin_map).get_by_left(y).unwrap(),
+            }
         })
         .collect();
     CGraph { modules, wires }
 }
 
-pub fn connect(
-    output_mod: CModIndex,
-    output_port: usize,
-    input_mod: CModIndex,
-    input_port: usize,
-) -> ConnectionResult {
-    // Grab the netlist
-    let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    match netlist.connect(
-        output_mod.to_module_index(),
-        output_port,
-        input_mod.to_module_index(),
-        input_port,
-    ) {
-        Ok(_) => ConnectionResult::ConnectionOk,
-        Err(e) => e,
-    }
-}
-
-pub fn connect2(port_a_id: i32, port_b_id: i32) -> ConnectionResult {
-    // Figure out which module those ids are in
-    let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    let port_map = PORT_MAP.lock().expect("Lock won't panic");
-
-    let port_a_idx = (*port_map)
-        .get_by_right(&port_a_id)
-        .expect("This will always exist");
-
-    let port_b_idx = (*port_map)
-        .get_by_right(&port_b_id)
-        .expect("This will always exist");
-
-    let res = if matches!(
-        (*netlist).get_port(*port_a_idx).unwrap(),
-        Port::Input { .. }
-    ) {
-        (*netlist).connect_real_idx(*port_b_idx, *port_a_idx)
-    } else {
-        (*netlist).connect_real_idx(*port_a_idx, *port_b_idx)
-    };
-
-    match res {
-        Ok(_) => ConnectionResult::ConnectionOk,
-        Err(e) => e,
-    }
-}
-
-pub fn get_type(id: i32) -> String {
-    // Lookup the pin index from the bimap
-    let port_map = PORT_MAP.lock().expect("Lock won't panic");
-    let netlist = NETLIST.lock().expect("Lock won't panic");
-    let pi = (*port_map)
-        .get_by_right(&id)
-        .expect("We'll only use ids from the ones we just constructed");
-    // Get the port from the index
-    let p = (*netlist)
-        .get_port(*pi)
-        .expect("This port will always exist");
-    // Return the name of the type
-    p.kind().to_string()
-}
-
-pub fn delete_module(id: i32) {
-    let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    let mod_map = MOD_MAP.lock().expect("Lock won't panic");
-    let mi = mod_map.get_by_right(&id).expect("This will always exist");
-    netlist.remove_module(*mi);
-}
-
-pub fn delete_wire(id: i32) -> i32 {
-    // The wire id is just the index into the wire vector. No further cleanup is needed.
-    let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    if (*netlist).remove_wire(id as usize).is_some() {
-        0
-    } else {
-        -1
-    }
-}
-
-pub fn add_module_from_json_path(path: String) -> anyhow::Result<CModIndex> {
+pub fn add_module_from_json_path(path: String) -> anyhow::Result<()> {
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
     let mut file = File::open(path)?;
     let mut buf = String::new();
     file.read_to_string(&mut buf)?;
-    let mi = (*netlist).add_library_module_from_json(&buf)?;
-    Ok(CModIndex::from_module_index(mi))
+    netlist.add_module_from_json(&buf)?;
+    Ok(())
 }
 
-pub fn dump_module_json_to_path(idx: CModIndex, path: String) -> i32 {
+pub fn get_json_module(mod_id: i32) -> String {
     let netlist = NETLIST.lock().expect("Lock won't panic");
-    let s = match netlist.dump_library_module_to_json(idx.to_module_index()) {
-        Some(s) => s,
-        None => return -1,
-    };
-    let mut file = match File::create(path) {
-        Ok(f) => f,
-        Err(_) => return -2,
-    };
-    match file.write_all(s.as_bytes()) {
-        Ok(_) => 0,
-        Err(_) => -3,
+    let mod_map = MOD_MAP.lock().expect("Lock won't panic");
+    // Get mod index from id
+    let mi = mod_map
+        .get_by_right(&mod_id)
+        .expect("This module will always exist");
+    if let Some(s) = netlist.dump_module_to_json(*mi) {
+        s
+    } else {
+        String::new()
     }
 }

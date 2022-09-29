@@ -4,36 +4,21 @@
     {
       "name": "A",
       "kind": {
-        "Variable": {
-          "Reg": {
-            "signed": false,
-            "size": 16
-          }
-        }
+        "repr": 0
       }
     },
     {
       "name": "B",
       "kind": {
-        "Variable": {
-          "Reg": {
-            "signed": false,
-            "size": 16
-          }
-        }
+        "repr": 0
       }
     }
   ],
   "outputs": [
     {
-      "name": "Out",
+      "name": "C",
       "kind": {
-        "Variable": {
-          "Reg": {
-            "signed": false,
-            "size": 16
-          }
-        }
+        "repr": 0
       }
     }
   ]

@@ -20,6 +20,7 @@ struct WindowState {
   bool show_log;
   bool show_browser;
   bool show_demo;
+  bool stale_graph;
   // Updated when processing new link events
   int start_attr;
   int stop_attr;
@@ -34,5 +35,6 @@ struct WindowState {
     show_demo = false;
     start_attr = 0;
     stop_attr = 0;
+    stale_graph = false;
   }
 };

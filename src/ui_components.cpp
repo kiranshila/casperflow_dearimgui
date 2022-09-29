@@ -1,4 +1,5 @@
 #include "ui_components.hpp"
+#include <iostream>
 
 /// Draw the graph and wires in a window called "Editor"
 void draw_editor(bool *p_open, org::cfrs::CGraph &graph) {
@@ -63,14 +64,15 @@ void draw_main_menu(bool *editor_open, bool *log_open, bool *browser_open,
                     bool *demo_open) {
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
-      if (ImGui::Button("Open library")) {
+      if (ImGui::MenuItem("Open library", "CTRL+o")) {
         ImGuiFileDialog::Instance()->OpenDialog("ChooseLibDlgKey",
                                                 "Choose File", ".json", ".");
       }
       ImGui::EndMenu();
     }
     if (ImGui::BeginMenu("Edit")) {
-      if (ImGui::MenuItem("Undo", "CTRL+z")) {
+      if (ImGui::MenuItem("Dump netlist", "CTRL+d")) {
+        org::cfrs::dump_netlist();
       }
       ImGui::EndMenu();
     }

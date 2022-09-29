@@ -1,85 +1,75 @@
 //! This module includes the definition of prefab library blocks
 //! We'll use json, because it's easy
 
+use crate::ffi::{InterconnectDirection, PinKind};
+use crate::netlist::{ModuleIndex, Netlist};
 use serde::{Deserialize, Serialize};
 use serde_json::Result;
-
-use crate::verilog::{Module, ModuleIndex, Netlist, Port, VerilogKind};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LibraryModule {
     name: String,
-    inputs: Vec<LibraryPort>,
-    outputs: Vec<LibraryPort>,
+    inputs: Vec<LibraryPin>,
+    outputs: Vec<LibraryPin>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LibraryPort {
+pub struct LibraryPin {
     name: String,
-    kind: VerilogKind,
-}
-
-impl Port {
-    pub fn to_library(&self) -> LibraryPort {
-        match self {
-            Port::Input { name, kind, .. } => LibraryPort {
-                name: name.clone(),
-                kind: *kind,
-            },
-            Port::Output { name, kind, .. } => LibraryPort {
-                name: name.clone(),
-                kind: *kind,
-            },
-        }
-    }
-    pub fn from_library_input(port: LibraryPort) -> Self {
-        Self::input(port.name, port.kind)
-    }
-    pub fn from_library_output(port: LibraryPort) -> Self {
-        Self::output(port.name, port.kind)
-    }
+    kind: PinKind,
 }
 
 impl Netlist {
     pub fn get_library_module(&self, idx: ModuleIndex) -> Option<LibraryModule> {
         let m = self.get_module(idx)?;
         let inputs = m
-            .inputs
-            .iter()
-            .filter_map(|x| self.get_port(*x).and_then(|x| Some(x.to_library())))
+            .inputs()
+            .filter_map(|x| {
+                self.get_pin(*x).and_then(|x| {
+                    Some(LibraryPin {
+                        name: x.name().to_string(),
+                        kind: x.kind(),
+                    })
+                })
+            })
             .collect();
         let outputs = m
-            .outputs
-            .iter()
-            .filter_map(|x| self.get_port(*x).and_then(|x| Some(x.to_library())))
+            .outputs()
+            .filter_map(|x| {
+                self.get_pin(*x).and_then(|x| {
+                    Some(LibraryPin {
+                        name: x.name().to_string(),
+                        kind: x.kind(),
+                    })
+                })
+            })
             .collect();
         Some(LibraryModule {
-            name: m.name.clone(),
+            name: m.name().to_string(),
             inputs,
             outputs,
         })
     }
 
-    pub fn add_library_module(&mut self, module: LibraryModule) -> ModuleIndex {
+    pub fn add_module_from_library(&mut self, module: LibraryModule) -> ModuleIndex {
         // Add the module
-        let mi = self.add_module(Module::new(module.name));
+        let mi = self.add_module(module.name);
         // Add all the ports
         for port in module.inputs {
-            self.add_port(Port::from_library_input(port), mi);
+            self.add_pin(mi, port.name, port.kind, InterconnectDirection::Input);
         }
         for port in module.outputs {
-            self.add_port(Port::from_library_output(port), mi);
+            self.add_pin(mi, port.name, port.kind, InterconnectDirection::Output);
         }
-
         mi
     }
 
-    pub fn add_library_module_from_json(&mut self, mod_json: &str) -> Result<ModuleIndex> {
+    pub fn add_module_from_json(&mut self, mod_json: &str) -> Result<ModuleIndex> {
         let module = serde_json::from_str(mod_json)?;
-        Ok(self.add_library_module(module))
+        Ok(self.add_module_from_library(module))
     }
 
-    pub fn dump_library_module_to_json(&self, idx: ModuleIndex) -> Option<String> {
+    pub fn dump_module_to_json(&self, idx: ModuleIndex) -> Option<String> {
         let module = self.get_library_module(idx)?;
         Some(serde_json::to_string_pretty(&module).unwrap())
     }
@@ -96,21 +86,21 @@ mod tests {
         let logical = LibraryModule {
             name: "Logical".to_owned(),
             inputs: vec![
-                LibraryPort {
+                LibraryPin {
                     name: "A".to_owned(),
-                    kind: Default::default(),
+                    kind: PinKind::Wire,
                 },
-                LibraryPort {
+                LibraryPin {
                     name: "B".to_owned(),
-                    kind: Default::default(),
+                    kind: PinKind::Wire,
                 },
             ],
-            outputs: vec![LibraryPort {
+            outputs: vec![LibraryPin {
                 name: "Out".to_owned(),
-                kind: Default::default(),
+                kind: PinKind::Wire,
             }],
         };
         // Add it
-        netlist.add_library_module(logical);
+        netlist.add_module_from_library(logical);
     }
 }

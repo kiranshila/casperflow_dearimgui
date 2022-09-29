@@ -1,6 +1,7 @@
 #include "CasperFlow.hpp"
+#include "imgui.h"
 #include "lib.rs.h"
-#include "ui_components.hpp"
+#include <exception>
 
 namespace rs = org::cfrs;
 
@@ -13,9 +14,6 @@ int main() {
 
   ApplicationLog log;
   WindowState ws;
-
-  // Track to see if the graph is stale
-  bool stale = true;
 
   // Graph
   rs::CGraph graph;
@@ -46,8 +44,8 @@ int main() {
       ImGui::DockBuilderFinish(ds_id);
     }
 
-    if (stale) {
-      stale = false;
+    if (ws.stale_graph) {
+      ws.stale_graph = false;
       graph = rs::get_graph();
     }
 
@@ -88,42 +86,25 @@ int main() {
       }
     }
 
-    if (ImNodes::IsPinHovered(&ws.pin)) {
-      ImGui::BeginTooltip();
-      ImGui::Text("Pin type: %s", rs::get_type(ws.pin).c_str());
-      ImGui::EndTooltip();
-    }
-
     if (ImNodes::IsLinkCreated(&ws.start_attr, &ws.stop_attr)) {
       // Attempt to make the connection. Do something? with the error
-      auto result = rs::connect2(ws.start_attr, ws.stop_attr);
-      switch (result) {
-      case org::cfrs::ConnectionResult::BadIndex:
-        log.add_log("We somehow got a bad pin or module index, this shouldn't "
-                    "happen\n");
-        break;
-      case org::cfrs::ConnectionResult::DirectionMismatch:
-        log.add_log("Inputs must be connected to outputs\n");
-        break;
-      case org::cfrs::ConnectionResult::TypeMismatch:
-        log.add_log("The port types disagree, check the port types on either "
-                    "side of the connection\n");
-        break;
-      case org::cfrs::ConnectionResult::InputDriven:
-        log.add_log(
-            "Input is already driven, delete the existing connection\n");
-        break;
-      case org::cfrs::ConnectionResult::ConnectionOk:
-        stale = true;
-        break;
+      try {
+        rs::add_wire(ws.start_attr, ws.stop_attr);
+        ws.stale_graph = true;
+      } catch (std::exception error) {
+        log.add_log("%s\n", error.what());
       }
     }
 
     // Draw the node popup
     if (ImGui::BeginPopup("node_rc_menu")) {
       if (ImGui::MenuItem("Delete module")) {
-        rs::delete_module(ws.node);
-        stale = true;
+        rs::remove_module(ws.node);
+        ws.stale_graph = true;
+      }
+      if (ImGui::MenuItem("Get JSON")) {
+        auto json = rs::get_json_module(ws.node);
+        log.add_log(json.c_str());
       }
       ImGui::EndPopup();
     }
@@ -131,18 +112,18 @@ int main() {
     // Draw the wire popup
     if (ImGui::BeginPopup("wire_rc_menu")) {
       if (ImGui::MenuItem("Delete connection")) {
-        if (rs ::delete_wire(ws.link) < 0) {
+        if (rs::remove_wire(ws.link) < 0) {
           log.add_log("We tried to delete a link that didn't exist, this "
                       "shouldn't happen.\n");
         } else {
-          stale = true;
+          ws.stale_graph = true;
         }
       }
       ImGui::EndPopup();
     }
 
     // File selector
-    stale = file_selector();
+    ws.stale_graph |= file_selector();
 
     // Render
     gui_render(window);
