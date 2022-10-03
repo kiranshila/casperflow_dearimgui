@@ -21,6 +21,8 @@ struct WindowState {
   bool show_browser;
   bool show_demo;
   bool stale_graph;
+  // Flag to quit with
+  bool quit;
   // Updated when processing new link events
   int start_attr;
   int stop_attr;
@@ -31,6 +33,7 @@ struct WindowState {
   WindowState() {
     show_editor = true;
     show_log = true;
+    quit = false;
     show_browser = true;
     show_demo = false;
     start_attr = 0;

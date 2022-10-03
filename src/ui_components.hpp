@@ -8,7 +8,7 @@
 void draw_editor(bool *p_open, org::cfrs::CGraph &graph);
 void draw_library(bool *p_open);
 void draw_main_menu(bool *editor_open, bool *log_open, bool *browser_open,
-                    bool *demo_open);
+                    bool *demo_open, bool *quit);
 bool file_selector();
 
 struct ApplicationLog {

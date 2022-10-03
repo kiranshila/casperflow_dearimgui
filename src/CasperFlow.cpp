@@ -19,13 +19,14 @@ int main() {
   rs::CGraph graph;
 
   // Run the gui!
-  while (!glfwWindowShouldClose(window)) {
+  while (!glfwWindowShouldClose(window) && !ws.quit) {
+
     // Get the next frame to render to
     gui_newframe();
 
     // Display the main menu
     draw_main_menu(&ws.show_editor, &ws.show_log, &ws.show_browser,
-                   &ws.show_demo);
+                   &ws.show_demo, &ws.quit);
 
     // Create central dockspace
     auto ds_id = ImGui::DockSpaceOverViewport(ImGui::GetMainViewport());

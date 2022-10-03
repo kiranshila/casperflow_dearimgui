@@ -61,12 +61,15 @@ void draw_library(bool *p_open) {
 
 // Draw the main menu - file, window, etc.
 void draw_main_menu(bool *editor_open, bool *log_open, bool *browser_open,
-                    bool *demo_open) {
+                    bool *demo_open, bool *quit) {
   if (ImGui::BeginMainMenuBar()) {
     if (ImGui::BeginMenu("File")) {
       if (ImGui::MenuItem("Open library", "CTRL+o")) {
         ImGuiFileDialog::Instance()->OpenDialog("ChooseLibDlgKey",
                                                 "Choose File", ".json", ".");
+      }
+      if (ImGui::MenuItem("Quit", "Alt+F4")) {
+        *quit = true;
       }
       ImGui::EndMenu();
     }
