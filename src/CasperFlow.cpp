@@ -1,5 +1,6 @@
 #include "CasperFlow.hpp"
 #include "imgui.h"
+#include "imnodes.h"
 #include "lib.rs.h"
 #include <exception>
 
@@ -45,6 +46,7 @@ int main() {
       ImGui::DockBuilderFinish(ds_id);
     }
 
+    // If graph is stale, get a new one
     if (ws.stale_graph) {
       ws.stale_graph = false;
       graph = rs::get_graph();
@@ -52,7 +54,7 @@ int main() {
 
     // Run the layout
     if (ws.show_editor)
-      draw_editor(&ws.show_editor, graph);
+      draw_editor(&ws.show_editor, graph, &ws.stale_graph);
     if (ws.show_browser)
       draw_library(&ws.show_browser);
     if (ws.show_log)
@@ -124,7 +126,7 @@ int main() {
     }
 
     // File selector
-    ws.stale_graph |= file_selector();
+    file_selector(&ws.stale_graph);
 
     // Render
     gui_render(window);

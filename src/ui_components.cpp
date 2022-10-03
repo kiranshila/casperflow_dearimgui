@@ -1,13 +1,23 @@
 #include "ui_components.hpp"
+#include "imgui.h"
+#include "imgui_internal.h"
+#include "imnodes.h"
+#include "lib.rs.h"
 #include <iostream>
 
 /// Draw the graph and wires in a window called "Editor"
-void draw_editor(bool *p_open, org::cfrs::CGraph &graph) {
+void draw_editor(bool *p_open, org::cfrs::CGraph &graph, bool *stale_graph) {
   ImGui::Begin("Editor", p_open);
   ImNodes::BeginNodeEditor();
 
   // Draw nodes and wires
   for (auto mod : graph.modules) {
+    // Set the position
+    ImNodes::SetNodeScreenSpacePos(mod.id,
+                                   ImVec2(mod.position[0], mod.position[1]));
+
+    // Start drawing (we have to do this after we set the position otherwise
+    // it'll start drawing at 0,0)
     ImNodes::BeginNode(mod.id);
 
     // Title
@@ -15,24 +25,54 @@ void draw_editor(bool *p_open, org::cfrs::CGraph &graph) {
     ImGui::TextUnformatted(mod.name.c_str());
     ImNodes::EndNodeTitleBar();
 
+    // Style inputs and outputs like simulink where the text is edge-aligned
+
     // Inputs
+    ImGui::BeginGroup();
     for (auto in_port : mod.inputs) {
-      ImNodes::BeginInputAttribute(in_port.id);
+      ImNodes::BeginInputAttribute(in_port.id, ImNodesPinShape_QuadFilled);
       ImGui::TextUnformatted(in_port.name.c_str());
       ImNodes::EndInputAttribute();
     }
+    ImGui::EndGroup();
+
+    ImGui::SameLine();
 
     // Outputs
+    ImGui::BeginGroup();
     for (auto out_port : mod.outputs) {
-      ImNodes::BeginOutputAttribute(out_port.id);
+      ImNodes::BeginOutputAttribute(out_port.id, ImNodesPinShape_QuadFilled);
       ImGui::TextUnformatted(out_port.name.c_str());
       ImNodes::EndOutputAttribute();
     }
+    ImGui::EndGroup();
     ImNodes::EndNode();
   }
 
   for (auto wire : graph.wires) {
     ImNodes::Link(wire.id, wire.x, wire.y);
+  }
+
+  // Drag and drop into editor
+  // Process drag and drop targets inside the editor
+  ImRect inner_rect = ImGui::GetCurrentWindow()->InnerRect;
+  ImVec2 pos = ImGui::GetMousePos();
+  if (ImGui::BeginDragDropTargetCustom(inner_rect, ImGui::GetID("Editor"))) {
+    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(
+            "NewDragModule", ImGuiDragDropFlags_AcceptBeforeDelivery |
+                                 ImGuiDragDropFlags_AcceptNoDrawDefaultRect)) {
+      if (payload->IsPreview()) {
+        // Draw something?
+      }
+      if (payload->IsDelivery()) {
+        // Add node?
+        org::cfrs::add_module_from_json_path(
+            "/home/kiran/Projects/Cpp/casperflow/resources/logical.json",
+            pos[0], pos[1]);
+        *stale_graph = true;
+      }
+    }
+    ImGui::EndDragDropTarget();
   }
 
   ImNodes::MiniMap(0.1f, ImNodesMiniMapLocation_BottomRight);
@@ -44,16 +84,11 @@ void draw_editor(bool *p_open, org::cfrs::CGraph &graph) {
 void draw_library(bool *p_open) {
   ImGui::Begin("Library Browser", p_open);
   if (ImGui::CollapsingHeader("Primitives")) {
-    ImGui::Text("Relational");
-    ImGui::Text("Logical");
-    ImGui::Text("Delay");
-  }
-  if (ImGui::CollapsingHeader("IO")) {
-    if (ImGui::TreeNode("Networking")) {
-      ImGui::Text("10 GbE");
-    }
-    if (ImGui::TreeNode("GPIO")) {
-      ImGui::Text("Software Register");
+    ImGui::TreeNodeEx("Logical");
+    if (ImGui::BeginDragDropSource()) {
+      ImGui::SetDragDropPayload("NewDragModule", NULL, 0);
+      ImGui::Text("Insert new module");
+      ImGui::EndDragDropSource();
     }
   }
   ImGui::End();
@@ -170,19 +205,17 @@ void ApplicationLog::draw(const char *title, bool *p_open = nullptr) {
   ImGui::End();
 }
 
-bool file_selector() {
-  bool stale = false;
+void file_selector(bool *stale_graph) {
   // display
   if (ImGuiFileDialog::Instance()->Display("ChooseLibDlgKey")) {
     // action if OK
     if (ImGuiFileDialog::Instance()->IsOk()) {
       std::string path = ImGuiFileDialog::Instance()->GetFilePathName();
       // action
-      org::cfrs::add_module_from_json_path(path);
-      stale = true;
+      // org::cfrs::add_module_from_json_path(path);
+      *stale_graph = true;
     }
     // close
     ImGuiFileDialog::Instance()->Close();
   }
-  return stale;
 }

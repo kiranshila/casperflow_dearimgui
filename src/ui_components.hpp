@@ -5,11 +5,11 @@
 #include <imgui.h>
 #include <imnodes.h>
 
-void draw_editor(bool *p_open, org::cfrs::CGraph &graph);
+void draw_editor(bool *p_open, org::cfrs::CGraph &graph, bool *stale_graph);
 void draw_library(bool *p_open);
 void draw_main_menu(bool *editor_open, bool *log_open, bool *browser_open,
                     bool *demo_open, bool *quit);
-bool file_selector();
+void file_selector(bool *stale_graph);
 
 struct ApplicationLog {
   ImGuiTextBuffer buf;

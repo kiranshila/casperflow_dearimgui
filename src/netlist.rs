@@ -142,11 +142,12 @@ impl Pin {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq)]
 pub struct Module {
     name: String,
     inputs: Vec<PinIndex>,
     outputs: Vec<PinIndex>,
+    position: [f32; 2],
 }
 
 impl Module {
@@ -155,6 +156,7 @@ impl Module {
             name,
             inputs: vec![],
             outputs: vec![],
+            position: [0.0, 0.0],
         }
     }
 
@@ -171,6 +173,11 @@ impl Module {
     /// Get an iterator over the outputs of the module
     pub fn outputs(&self) -> std::slice::Iter<PinIndex> {
         self.outputs.iter()
+    }
+
+    // Get the screen position
+    pub fn position(&self) -> &[f32; 2] {
+        &self.position
     }
 }
 
@@ -389,6 +396,14 @@ impl Netlist {
             _ => unreachable!(),
         }
         // All done
+        Some(())
+    }
+
+    /// Set the screen position of a given module (only used in rendering), returning `None` if given a bad index
+    pub fn set_module_position(&mut self, idx: ModuleIndex, x: f32, y: f32) -> Option<()> {
+        let m = self.modules.get_mut(idx.0)?;
+        m.position[0] = x;
+        m.position[1] = y;
         Some(())
     }
 }

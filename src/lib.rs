@@ -45,6 +45,7 @@ mod ffi {
         name: String,
         inputs: Vec<CPort>,
         outputs: Vec<CPort>,
+        position: [f32; 2],
     }
 
     #[derive(Debug)]
@@ -73,11 +74,12 @@ mod ffi {
         fn remove_pin(pin_id: i32) -> i32;
         fn add_wire(in_a_id: i32, in_b_id: i32) -> Result<()>;
         fn remove_wire(wire_id: i32) -> i32;
+        fn set_module_position(mod_id: i32, x: f32, y: f32) -> i32;
 
         fn get_graph() -> CGraph;
         fn dump_netlist();
 
-        fn add_module_from_json_path(path: String) -> Result<()>;
+        fn add_module_from_json_path(path: String, x: f32, y: f32) -> Result<()>;
         fn get_json_module(mod_id: i32) -> String;
     }
 }
@@ -167,6 +169,21 @@ pub fn remove_wire(wire_id: i32) -> i32 {
     }
 }
 
+pub fn set_module_position(mod_id: i32, x: f32, y: f32) -> i32 {
+    let mut netlist = NETLIST.lock().expect("Lock won't panic");
+    let mod_map = MOD_MAP.lock().expect("Lock won't panic");
+    // Get mod index from id
+    let m = if let Some(m) = mod_map.get_by_right(&mod_id) {
+        m
+    } else {
+        return -1;
+    };
+    match netlist.set_module_position(*m, x, y) {
+        Some(_) => 0,
+        None => -1,
+    }
+}
+
 /// Print a debug output of the netlist to stdout
 pub fn dump_netlist() {
     let netlist = NETLIST.lock().expect("Lock won't panic");
@@ -197,6 +214,7 @@ pub fn get_graph() -> CGraph {
             mod_map.insert(ModuleIndex(mi), id);
             CModule {
                 id,
+                position: m.position().clone(),
                 name: m.name().to_owned(),
                 inputs: m
                     .inputs()
@@ -242,12 +260,14 @@ pub fn get_graph() -> CGraph {
     CGraph { modules, wires }
 }
 
-pub fn add_module_from_json_path(path: String) -> anyhow::Result<()> {
+pub fn add_module_from_json_path(path: String, x: f32, y: f32) -> anyhow::Result<()> {
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
     let mut file = File::open(path)?;
     let mut buf = String::new();
     file.read_to_string(&mut buf)?;
-    netlist.add_module_from_json(&buf)?;
+    let mi = netlist.add_module_from_json(&buf)?;
+    // Set the position
+    netlist.set_module_position(mi, x, y);
     Ok(())
 }
 

@@ -1,14 +1,14 @@
 {
-  "name": "Logical",
+  "name": "10 GbE",
   "inputs": [
     {
-      "name": "A",
+      "name": "EOF",
       "kind": {
         "repr": 0
       }
     },
     {
-      "name": "B",
+      "name": "Input Data",
       "kind": {
         "repr": 0
       }
@@ -16,7 +16,7 @@
   ],
   "outputs": [
     {
-      "name": "C",
+      "name": "Activity LED",
       "kind": {
         "repr": 0
       }
