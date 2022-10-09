@@ -147,16 +147,17 @@ pub struct Module {
     name: String,
     inputs: Vec<PinIndex>,
     outputs: Vec<PinIndex>,
-    position: [f32; 2],
+    // Globally unique module id
+    id: i32,
 }
 
 impl Module {
-    pub fn new(name: String) -> Self {
+    pub fn new(name: String, id: i32) -> Self {
         Self {
             name,
             inputs: vec![],
             outputs: vec![],
-            position: [0.0, 0.0],
+            id,
         }
     }
 
@@ -175,9 +176,9 @@ impl Module {
         self.outputs.iter()
     }
 
-    // Get the screen position
-    pub fn position(&self) -> &[f32; 2] {
-        &self.position
+    /// Get the module id
+    pub fn id(&self) -> i32 {
+        self.id
     }
 }
 
@@ -186,6 +187,7 @@ pub struct Netlist {
     modules: Arena<Module>,
     pins: Arena<Pin>,
     wires: Arena<(PinIndex, PinIndex)>,
+    next_mod_idx: i32,
 }
 
 impl Default for Netlist {
@@ -200,6 +202,7 @@ impl Netlist {
             modules: Arena::new(),
             pins: Arena::new(),
             wires: Arena::new(),
+            next_mod_idx: 0,
         }
     }
 
@@ -305,8 +308,12 @@ impl Netlist {
 
     /// Add a module to the netlist, returning the module index
     pub fn add_module(&mut self, name: String) -> ModuleIndex {
+        // Grab the next index we can assign
+        let id = self.next_mod_idx;
+        // Increment the counter
+        self.next_mod_idx += 1;
         // Add the module to the arena and return the index
-        ModuleIndex(self.modules.insert(Module::new(name)))
+        ModuleIndex(self.modules.insert(Module::new(name, id)))
     }
 
     /// Remove a module by it's module index `idx`, returning None if no such module exists
@@ -396,14 +403,6 @@ impl Netlist {
             _ => unreachable!(),
         }
         // All done
-        Some(())
-    }
-
-    /// Set the screen position of a given module (only used in rendering), returning `None` if given a bad index
-    pub fn set_module_position(&mut self, idx: ModuleIndex, x: f32, y: f32) -> Option<()> {
-        let m = self.modules.get_mut(idx.0)?;
-        m.position[0] = x;
-        m.position[1] = y;
         Some(())
     }
 }

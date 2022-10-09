@@ -5,7 +5,8 @@ pub mod netlist;
 use crate::netlist::{ModuleIndex, Netlist, PinIndex, WireIndex};
 use anyhow::anyhow;
 use bimap::BiMap;
-use ffi::{CGraph, CModule, CPort, CWire, InterconnectDirection, PinKind};
+use ffi::{CGraph, CModIndex, CModule, CPort, CWire, InterconnectDirection, PinKind};
+use generational_arena::Index;
 use lazy_static::lazy_static;
 use std::{fs::File, io::Read, sync::Mutex};
 
@@ -45,7 +46,6 @@ mod ffi {
         name: String,
         inputs: Vec<CPort>,
         outputs: Vec<CPort>,
-        position: [f32; 2],
     }
 
     #[derive(Debug)]
@@ -61,6 +61,12 @@ mod ffi {
         wires: Vec<CWire>,
     }
 
+    #[derive(Debug)]
+    pub struct CModIndex {
+        generation: u64,
+        index: usize,
+    }
+
     // Rust types and signatures exposed to C++.
     extern "Rust" {
         fn add_module(name: String);
@@ -74,13 +80,22 @@ mod ffi {
         fn remove_pin(pin_id: i32) -> i32;
         fn add_wire(in_a_id: i32, in_b_id: i32) -> Result<()>;
         fn remove_wire(wire_id: i32) -> i32;
-        fn set_module_position(mod_id: i32, x: f32, y: f32) -> i32;
 
         fn get_graph() -> CGraph;
         fn dump_netlist();
 
-        fn add_module_from_json_path(path: String, x: f32, y: f32) -> Result<()>;
+        fn add_module_from_json_path(path: String) -> Result<i32>;
         fn get_json_module(mod_id: i32) -> String;
+    }
+}
+
+impl CModIndex {
+    pub fn to_mod_index(&self) -> ModuleIndex {
+        ModuleIndex(Index::from_raw_parts(self.index, self.generation))
+    }
+    pub fn from_mod_index(idx: ModuleIndex) -> Self {
+        let (index, generation) = idx.0.into_raw_parts();
+        Self { generation, index }
     }
 }
 
@@ -169,21 +184,6 @@ pub fn remove_wire(wire_id: i32) -> i32 {
     }
 }
 
-pub fn set_module_position(mod_id: i32, x: f32, y: f32) -> i32 {
-    let mut netlist = NETLIST.lock().expect("Lock won't panic");
-    let mod_map = MOD_MAP.lock().expect("Lock won't panic");
-    // Get mod index from id
-    let m = if let Some(m) = mod_map.get_by_right(&mod_id) {
-        m
-    } else {
-        return -1;
-    };
-    match netlist.set_module_position(*m, x, y) {
-        Some(_) => 0,
-        None => -1,
-    }
-}
-
 /// Print a debug output of the netlist to stdout
 pub fn dump_netlist() {
     let netlist = NETLIST.lock().expect("Lock won't panic");
@@ -208,13 +208,10 @@ pub fn get_graph() -> CGraph {
     // Grab the modules
     let modules = netlist
         .modules()
-        .enumerate()
-        .map(|(id, (mi, m))| {
-            let id = id as i32;
-            mod_map.insert(ModuleIndex(mi), id);
+        .map(|(i, m)| {
+            mod_map.insert(ModuleIndex(i), m.id());
             CModule {
-                id,
-                position: m.position().clone(),
+                id: m.id(),
                 name: m.name().to_owned(),
                 inputs: m
                     .inputs()
@@ -260,15 +257,13 @@ pub fn get_graph() -> CGraph {
     CGraph { modules, wires }
 }
 
-pub fn add_module_from_json_path(path: String, x: f32, y: f32) -> anyhow::Result<()> {
+pub fn add_module_from_json_path(path: String) -> anyhow::Result<i32> {
     let mut netlist = NETLIST.lock().expect("Lock won't panic");
     let mut file = File::open(path)?;
     let mut buf = String::new();
     file.read_to_string(&mut buf)?;
     let mi = netlist.add_module_from_json(&buf)?;
-    // Set the position
-    netlist.set_module_position(mi, x, y);
-    Ok(())
+    Ok(netlist.get_module(mi).expect("We just added it").id())
 }
 
 pub fn get_json_module(mod_id: i32) -> String {

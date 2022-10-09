@@ -1,8 +1,4 @@
 #include "CasperFlow.hpp"
-#include "imgui.h"
-#include "imnodes.h"
-#include "lib.rs.h"
-#include <exception>
 
 namespace rs = org::cfrs;
 
@@ -46,49 +42,6 @@ int main() {
       ImGui::DockBuilderFinish(ds_id);
     }
 
-    // If graph is stale, get a new one
-    if (ws.stale_graph) {
-      ws.stale_graph = false;
-      graph = rs::get_graph();
-    }
-
-    // Run the layout
-    if (ws.show_editor)
-      draw_editor(&ws.show_editor, graph, &ws.stale_graph);
-    if (ws.show_browser)
-      draw_library(&ws.show_browser);
-    if (ws.show_log)
-      log.draw("Log", &ws.show_log);
-    if (ws.show_demo)
-      ImGui::ShowDemoWindow(&ws.show_demo);
-
-    // Check if we right clicked a node
-    bool open_node_popup =
-        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        ImNodes::IsEditorHovered() && ImGui::IsMouseReleased(1) &&
-        !ImGui::IsMouseDragging(1);
-
-    if (ImNodes::IsLinkHovered(&ws.link)) {
-      ImGui::BeginTooltip();
-      ImGui::Text("Link id: %d", ws.link);
-      ImGui::EndTooltip();
-
-      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
-        ImGui::OpenPopup("wire_rc_menu");
-      }
-    }
-
-    if (ImNodes::IsNodeHovered(&ws.node)) {
-      ImGui::BeginTooltip();
-      ImGui::Text("Node id: %d", ws.node);
-      ImGui::EndTooltip();
-
-      // If right click on node, open the node context menu
-      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
-        ImGui::OpenPopup("node_rc_menu");
-      }
-    }
-
     if (ImNodes::IsLinkCreated(&ws.start_attr, &ws.stop_attr)) {
       // Attempt to make the connection. Do something? with the error
       try {
@@ -127,6 +80,49 @@ int main() {
 
     // File selector
     file_selector(&ws.stale_graph);
+
+    // If graph is stale, get a new one
+    if (ws.stale_graph) {
+      ws.stale_graph = false;
+      graph = rs::get_graph();
+    }
+
+    // Run the layout
+    if (ws.show_editor)
+      draw_editor(&ws.show_editor, graph);
+    if (ws.show_browser)
+      draw_library(&ws.show_browser);
+    if (ws.show_log)
+      log.draw("Log", &ws.show_log);
+    if (ws.show_demo)
+      ImGui::ShowDemoWindow(&ws.show_demo);
+
+    // Check if we right clicked a node
+    bool open_node_popup =
+        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+        ImNodes::IsEditorHovered() && ImGui::IsMouseReleased(1) &&
+        !ImGui::IsMouseDragging(1);
+
+    if (ImNodes::IsLinkHovered(&ws.link)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Link id: %d", ws.link);
+      ImGui::EndTooltip();
+
+      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
+        ImGui::OpenPopup("wire_rc_menu");
+      }
+    }
+
+    if (ImNodes::IsNodeHovered(&ws.node)) {
+      ImGui::BeginTooltip();
+      ImGui::Text("Node id: %d", ws.node);
+      ImGui::EndTooltip();
+
+      // If right click on node, open the node context menu
+      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
+        ImGui::OpenPopup("node_rc_menu");
+      }
+    }
 
     // Render
     gui_render(window);
