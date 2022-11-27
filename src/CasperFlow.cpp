@@ -52,29 +52,61 @@ int main() {
       }
     }
 
-    // Draw the node popup
-    if (ImGui::BeginPopup("node_rc_menu")) {
-      if (ImGui::MenuItem("Delete module")) {
-        rs::remove_module(ws.node);
-        ws.stale_graph = true;
-      }
-      if (ImGui::MenuItem("Get JSON")) {
-        auto json = rs::get_json_module(ws.node);
-        log.add_log(json.c_str());
-      }
-      ImGui::EndPopup();
-    }
+    // Draw the right click menu for the editor
+    if (ImGui::BeginPopup("rc_menu")) {
 
-    // Draw the wire popup
-    if (ImGui::BeginPopup("wire_rc_menu")) {
-      if (ImGui::MenuItem("Delete connection")) {
+      // Collect all the highlighted things (nodes/wires)
+      int num_nodes = ImNodes::NumSelectedNodes();
+      int num_links = ImNodes::NumSelectedLinks();
+
+      bool delete_single_link = (ws.link != -1) && (num_nodes == 0) && (num_links == 0);
+      bool delete_single_node = (ws.node != -1) && (num_nodes == 0) && (num_links == 0);
+      bool bulk_delete = (num_nodes >= 0) || (num_links >= 0);
+
+      if (bulk_delete){
+        if (ImGui::MenuItem("Delete all")) {
+        // Oh god, heap
+        int* node_ids = (int*)malloc(sizeof(int)*num_nodes);
+        int* link_ids = (int*)malloc(sizeof(int)*num_links);
+        ImNodes::GetSelectedNodes(node_ids);
+        ImNodes::GetSelectedLinks(link_ids);
+
+        for (int i = 0; i < num_links; i++) {
+          if (rs::remove_wire(link_ids[i]) < 0) {
+            log.add_log("We tried to delete a link that didn't exist, this "
+                        "shouldn't happen.\n");
+          }
+        }
+
+        for (int i = 0; i < num_nodes; i++) {
+          rs::remove_module(node_ids[i]);
+        }
+
+        // Don't forget you're programming c, you big dummy
+        free(node_ids);
+        free(link_ids);
+
+        ws.stale_graph = true;
+        }
+      }
+
+      else if (delete_single_link) {
+        if (ImGui::MenuItem("Delete wire")) {
         if (rs::remove_wire(ws.link) < 0) {
           log.add_log("We tried to delete a link that didn't exist, this "
                       "shouldn't happen.\n");
-        } else {
-          ws.stale_graph = true;
+        }
+        ws.stale_graph = true;
         }
       }
+
+      else if (delete_single_node) {
+        if (ImGui::MenuItem("Delete node")) {
+        rs::remove_module(ws.node);
+        ws.stale_graph = true;
+      }
+      }
+
       ImGui::EndPopup();
     }
 
@@ -97,31 +129,22 @@ int main() {
     if (ws.show_demo)
       ImGui::ShowDemoWindow(&ws.show_demo);
 
-    // Check if we right clicked a node
-    bool open_node_popup =
-        ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-        ImNodes::IsEditorHovered() && ImGui::IsMouseReleased(1) &&
-        !ImGui::IsMouseDragging(1);
+    // Process any right click action as I don't think there is a way yet
+    // to discriminate between docked windows
+    if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
+      ImGui::OpenPopup("rc_menu");
+    }
 
     if (ImNodes::IsLinkHovered(&ws.link)) {
       ImGui::BeginTooltip();
       ImGui::Text("Link id: %d", ws.link);
       ImGui::EndTooltip();
-
-      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
-        ImGui::OpenPopup("wire_rc_menu");
-      }
     }
 
     if (ImNodes::IsNodeHovered(&ws.node)) {
       ImGui::BeginTooltip();
       ImGui::Text("Node id: %d", ws.node);
       ImGui::EndTooltip();
-
-      // If right click on node, open the node context menu
-      if (ImGui::IsMouseReleased(1) && !ImGui::IsMouseDragging(1)) {
-        ImGui::OpenPopup("node_rc_menu");
-      }
     }
 
     // Render

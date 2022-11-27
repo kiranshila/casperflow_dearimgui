@@ -36,6 +36,9 @@ GLFWwindow *gui_init() {
   // No state pls
   io.IniFilename = nullptr;
 
+  // Font time
+  io.Fonts->AddFontFromFileTTF("../../vendor/CozetteVector.otf", 13);
+
   // Hook up imgui to the GLFW window
   ImGui_ImplGlfw_InitForOpenGL(window, true);
   // Hook up the renderer

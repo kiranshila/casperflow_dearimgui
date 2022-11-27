@@ -25,22 +25,18 @@ impl Netlist {
         let inputs = m
             .inputs()
             .filter_map(|x| {
-                self.get_pin(*x).and_then(|x| {
-                    Some(LibraryPin {
-                        name: x.name().to_string(),
-                        kind: x.kind(),
-                    })
+                self.get_pin(*x).map(|x| LibraryPin {
+                    name: x.name().to_string(),
+                    kind: x.kind(),
                 })
             })
             .collect();
         let outputs = m
             .outputs()
             .filter_map(|x| {
-                self.get_pin(*x).and_then(|x| {
-                    Some(LibraryPin {
-                        name: x.name().to_string(),
-                        kind: x.kind(),
-                    })
+                self.get_pin(*x).map(|x| LibraryPin {
+                    name: x.name().to_string(),
+                    kind: x.kind(),
                 })
             })
             .collect();

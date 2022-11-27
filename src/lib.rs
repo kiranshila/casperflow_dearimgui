@@ -1,6 +1,7 @@
 //! This module contians the functions that we'll extern out to C, to be interacted with from the GUI code
 pub mod library;
 pub mod netlist;
+pub mod project;
 
 use crate::netlist::{ModuleIndex, Netlist, PinIndex, WireIndex};
 use anyhow::anyhow;

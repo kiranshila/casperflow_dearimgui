@@ -1,4 +1,5 @@
 #include "ui_components.hpp"
+#include "imnodes.h"
 
 /// Draw the graph and wires in a window called "Editor"
 void draw_editor(bool *p_open, org::cfrs::CGraph &graph) {
@@ -78,11 +79,14 @@ void draw_editor(bool *p_open, org::cfrs::CGraph &graph) {
 void draw_library(bool *p_open) {
   ImGui::Begin("Library Browser", p_open);
   if (ImGui::CollapsingHeader("Primitives")) {
-    ImGui::TreeNodeEx("Logical");
-    if (ImGui::BeginDragDropSource()) {
-      ImGui::SetDragDropPayload("NewDragModule", NULL, 0);
-      ImGui::Text("Insert new module");
-      ImGui::EndDragDropSource();
+    if (ImGui::TreeNode("Logical")) {
+      ImGui::Button("10 GbE");
+      if (ImGui::BeginDragDropSource()) {
+        ImGui::SetDragDropPayload("NewDragModule", NULL, 0);
+        ImGui::Text("Insert new module");
+        ImGui::EndDragDropSource();
+      }
+      ImGui::TreePop();
     }
   }
   ImGui::End();
