@@ -1,9 +1,9 @@
 [submodule "vendor/imnodes"]
 	path = vendor/imnodes
 	url = https://github.com/Nelarius/imnodes
-[submodule "vendor/cxx-corrosion-cmake"]
-	path = vendor/cxx-corrosion-cmake
-	url = https://github.com/geekbrother/cxx-corrosion-cmake
 [submodule "vendor/ImGuiFileDialog"]
 	path = vendor/ImGuiFileDialog
 	url = https://github.com/aiekick/ImGuiFileDialog.git
+[submodule "vendor/imgui"]
+	path = vendor/imgui
+	url = https://github.com/ocornut/imgui.git
